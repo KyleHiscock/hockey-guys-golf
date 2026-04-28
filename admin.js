@@ -565,7 +565,7 @@ function rebuildAll() {
   buildCards();
   buildSchedule();
   buildResults();
-  buildPlayoffPicture();
+  if (typeof buildPlayoffPicture === 'function') buildPlayoffPicture();
   buildRosterDatalist();
   buildResultManager();
   const statsSection = document.getElementById('stats');
