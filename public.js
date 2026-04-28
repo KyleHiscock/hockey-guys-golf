@@ -234,35 +234,83 @@ function buildScheduleFromSheet(data) {
   return Object.values(byWeek).sort((a, b) => a.week - b.week);
 }
 
-function normalizeResultFromSheet(row) {
-  let parsedScores = null;
-  const rawScores = row.PlayerScoresJSON || row['Score Snapshot JSON'] || row.ScoreSnapshotJSON || row.scoreSnapshotJson || '';
-
+function parseLeagueJsonValue(value) {
+  if (!value) return null;
+  if (typeof value === 'object') return value;
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === '[object Object]') return null;
   try {
-    parsedScores = rawScores ? JSON.parse(rawScores) : null;
+    return JSON.parse(trimmed);
   } catch (e) {
-    parsedScores = null;
+    return null;
   }
+}
 
-  const playerScores = parsedScores && typeof parsedScores === 'object' ? parsedScores : {};
-  const playersSnapshot = playerScores.playersSnapshot || row.playersSnapshot || [];
-  const scoreSnapshot = playerScores.scoreSnapshot || row.scoreSnapshot || {};
+function normalizeScorePayload(row) {
+  const rawScores =
+    row.PlayerScoresJSON ||
+    row['Player Scores JSON'] ||
+    row['Score Snapshot JSON'] ||
+    row.ScoreSnapshotJSON ||
+    row.scoreSnapshotJson ||
+    row.ScoreJSON ||
+    row.ScoresJSON ||
+    row['Scores JSON'] ||
+    row.playerScores ||
+    row.PlayerScores ||
+    '';
 
-  let playerLine = row.PlayerLine || row.playerLine || '';
+  const parsed = parseLeagueJsonValue(rawScores) || {};
+  const nested = parsed.playerScores || parsed.PlayerScores || parsed.data || parsed;
+
+  let playersSnapshot =
+    nested.playersSnapshot ||
+    nested.PlayersSnapshot ||
+    nested.players ||
+    row.playersSnapshot ||
+    parseLeagueJsonValue(row.PlayersSnapshotJSON || row['Players Snapshot JSON'] || '') ||
+    [];
+
+  let scoreSnapshot =
+    nested.scoreSnapshot ||
+    nested.ScoreSnapshot ||
+    nested.scorecardScores ||
+    nested.scores ||
+    row.scoreSnapshot ||
+    parseLeagueJsonValue(row.ScoreSnapshot || row['Score Snapshot'] || '') ||
+    {};
+
+  playersSnapshot = parseLeagueJsonValue(playersSnapshot) || playersSnapshot || [];
+  scoreSnapshot = parseLeagueJsonValue(scoreSnapshot) || scoreSnapshot || {};
+
+  if (!Array.isArray(playersSnapshot)) playersSnapshot = [];
+  if (!scoreSnapshot || typeof scoreSnapshot !== 'object' || Array.isArray(scoreSnapshot)) scoreSnapshot = {};
+
+  return { playersSnapshot, scoreSnapshot };
+}
+
+function normalizeResultFromSheet(row) {
+  const scorePayload = normalizeScorePayload(row);
+  const playersSnapshot = scorePayload.playersSnapshot;
+  const scoreSnapshot = scorePayload.scoreSnapshot;
+
+  let playerLine = row.PlayerLine || row['Player Line'] || row.playerLine || '';
   if (!playerLine && Array.isArray(playersSnapshot) && playersSnapshot.length >= 4) {
-    playerLine = `${playersSnapshot[0].name || 'Player A'} & ${playersSnapshot[1].name || 'Player B'} vs ${playersSnapshot[2].name || 'Player C'} & ${playersSnapshot[3].name || 'Player D'}`;
+    playerLine = `${playersSnapshot[0].name || playersSnapshot[0]['Player Name'] || 'Player A'} & ${playersSnapshot[1].name || playersSnapshot[1]['Player Name'] || 'Player B'} vs ${playersSnapshot[2].name || playersSnapshot[2]['Player Name'] || 'Player C'} & ${playersSnapshot[3].name || playersSnapshot[3]['Player Name'] || 'Player D'}`;
   }
 
   return {
     resultId: row.ResultID || row.resultId || '',
     matchId: row.MatchID || row.matchId || '',
     week: Number(row.Week || row.week || 0),
-    date: row.Date || row.date || '',
+    date: row.Date || row.date || row.SubmittedAt || row['Entered At'] || '',
     side: row.Side || row.side || '',
     team1: normalizeTeamName(row.Team1 || row['Team 1'] || row.team1 || ''),
     team2: normalizeTeamName(row.Team2 || row['Team 2'] || row.team2 || ''),
     winner: normalizeTeamName(row.Winner || row.winner || ''),
     matchResult: row.MatchResult || row['Result Text'] || row.matchResult || '',
+    tiebreakerDetail: row.TiebreakerDetail || row.tiebreakerDetail || '',
     team1HolesWon: parseSheetNumber(row.Team1HolesWon || row['Team 1 Holes Won'] || row.team1HolesWon || 0),
     team2HolesWon: parseSheetNumber(row.Team2HolesWon || row['Team 2 Holes Won'] || row.team2HolesWon || 0),
     playerLine,
@@ -271,6 +319,7 @@ function normalizeResultFromSheet(row) {
     scoreSnapshot
   };
 }
+
 
 function applyLeagueDataFromSheet(data) {
   LEAGUE_API_DATA = data;
@@ -1287,53 +1336,162 @@ function getAvatarColor(name) {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
+function normalizePlayerStatName(name) {
+  return String(name || '').trim().replace(/\s+/g, ' ');
+}
+
+function countScoreSnapshotEntries(snapshot) {
+  if (!snapshot || typeof snapshot !== 'object') return 0;
+  let count = 0;
+  Object.keys(snapshot).forEach(function(key) {
+    const val = snapshot[key];
+    if (val && typeof val === 'object') {
+      Object.keys(val).forEach(function(innerKey) {
+        const n = parseInt(val[innerKey], 10);
+        if (Number.isFinite(n) && n > 0) count++;
+      });
+      return;
+    }
+    const n = parseInt(val, 10);
+    if (Number.isFinite(n) && n > 0) count++;
+  });
+  return count;
+}
+
+function getStatsMatchKey(result, index) {
+  const week = parseInt(result.week, 10) || 0;
+  const side = String(result.side || '').trim().toLowerCase();
+  const teams = [normalizeTeamName(result.team1), normalizeTeamName(result.team2)]
+    .filter(Boolean)
+    .sort()
+    .join(' vs ');
+
+  // One weekly head-to-head matchup should only count once in player stats.
+  // This protects against duplicate saved rows in Google Sheets making players show 2-0 / 0-2 after one week.
+  if (week && teams) return `week:${week}|side:${side}|teams:${teams}`;
+  return result.resultId ? `id:${result.resultId}` : `row:${index}`;
+}
+
+function chooseBetterStatsResult(current, candidate) {
+  if (!current) return candidate;
+  const currentScores = countScoreSnapshotEntries(current.result.scoreSnapshot);
+  const candidateScores = countScoreSnapshotEntries(candidate.result.scoreSnapshot);
+  if (candidateScores !== currentScores) return candidateScores > currentScores ? candidate : current;
+
+  const currentPlayers = Array.isArray(current.result.playersSnapshot) ? current.result.playersSnapshot.length : 0;
+  const candidatePlayers = Array.isArray(candidate.result.playersSnapshot) ? candidate.result.playersSnapshot.length : 0;
+  if (candidatePlayers !== currentPlayers) return candidatePlayers > currentPlayers ? candidate : current;
+
+  const currentHoles = Number(current.result.holesPlayed || 0);
+  const candidateHoles = Number(candidate.result.holesPlayed || 0);
+  if (candidateHoles !== currentHoles) return candidateHoles > currentHoles ? candidate : current;
+
+  // If they are otherwise the same, use the later row. This makes edited/re-saved rows win.
+  return candidate.index >= current.index ? candidate : current;
+}
+
+function getUniqueResultsForPlayerStats() {
+  const byMatch = new Map();
+  RESULTS.forEach(function(result, index) {
+    if (!result || !result.week || !result.team1 || !result.team2) return;
+    const key = getStatsMatchKey(result, index);
+    byMatch.set(key, chooseBetterStatsResult(byMatch.get(key), { result, index }));
+  });
+  return Array.from(byMatch.values())
+    .sort(function(a, b) { return a.index - b.index; })
+    .map(function(item) { return item.result; });
+}
+
+function parsePlayerLinePlayers(playerLine) {
+  const parts = String(playerLine || '').split(/\s+vs\s+/i);
+  const t1p = parts[0] ? parts[0].split(/\s*&\s*/).map(normalizePlayerStatName) : ['', ''];
+  const t2p = parts[1] ? parts[1].split(/\s*&\s*/).map(normalizePlayerStatName) : ['', ''];
+  return [t1p[0] || '', t1p[1] || '', t2p[0] || '', t2p[1] || ''];
+}
+
+function getScoreForPlayerHole(scoreSnapshot, player, playerIndex, holeNumber) {
+  if (!scoreSnapshot || typeof scoreSnapshot !== 'object') return null;
+  const fallbackIds = ['p1a', 'p1b', 'p2a', 'p2b'];
+  const candidateIds = [
+    player.id,
+    player.playerId,
+    player.key,
+    fallbackIds[playerIndex],
+    'p' + (playerIndex + 1),
+    String(playerIndex + 1)
+  ].filter(Boolean);
+
+  const candidateKeys = [];
+  candidateIds.forEach(function(id) {
+    candidateKeys.push(id + '_' + holeNumber);
+    candidateKeys.push(id + '-' + holeNumber);
+    candidateKeys.push(id + '.' + holeNumber);
+    candidateKeys.push(id + String(holeNumber));
+  });
+
+  for (const key of candidateKeys) {
+    if (scoreSnapshot[key] !== undefined && scoreSnapshot[key] !== null && scoreSnapshot[key] !== '') {
+      const parsed = parseInt(scoreSnapshot[key], 10);
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+    }
+  }
+
+  const name = normalizePlayerStatName(player.name);
+  if (name && scoreSnapshot[name] && typeof scoreSnapshot[name] === 'object') {
+    const nested = scoreSnapshot[name][holeNumber] || scoreSnapshot[name]['Hole ' + holeNumber] || scoreSnapshot[name]['#' + holeNumber];
+    const parsed = parseInt(nested, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  }
+
+  return null;
+}
+
 function computePlayerStats() {
   const players = {};
-  RESULTS.forEach(function(result) {
+  const statResults = getUniqueResultsForPlayerStats();
+
+  statResults.forEach(function(result) {
     var side = result.side === 'Front 9' ? 'front' : 'back';
     var holes = side === 'front' ? COURSE.front : COURSE.back;
     var allPlayers = [];
-    var snap = result.playersSnapshot || [];
+    var snap = Array.isArray(result.playersSnapshot) ? result.playersSnapshot : [];
+
     if (snap.length >= 4) {
       allPlayers = [
-        {name:snap[0].name||'', id:snap[0].id||'p1a', team:result.team1, won:result.winner===result.team1, lost:result.winner===result.team2},
-        {name:snap[1].name||'', id:snap[1].id||'p1b', team:result.team1, won:result.winner===result.team1, lost:result.winner===result.team2},
-        {name:snap[2].name||'', id:snap[2].id||'p2a', team:result.team2, won:result.winner===result.team2, lost:result.winner===result.team1},
-        {name:snap[3].name||'', id:snap[3].id||'p2b', team:result.team2, won:result.winner===result.team2, lost:result.winner===result.team1},
+        {name:normalizePlayerStatName(snap[0].name || snap[0]['Player Name'] || ''), id:snap[0].id || snap[0].playerId || 'p1a', team:result.team1, won:result.winner===result.team1, lost:result.winner===result.team2},
+        {name:normalizePlayerStatName(snap[1].name || snap[1]['Player Name'] || ''), id:snap[1].id || snap[1].playerId || 'p1b', team:result.team1, won:result.winner===result.team1, lost:result.winner===result.team2},
+        {name:normalizePlayerStatName(snap[2].name || snap[2]['Player Name'] || ''), id:snap[2].id || snap[2].playerId || 'p2a', team:result.team2, won:result.winner===result.team2, lost:result.winner===result.team1},
+        {name:normalizePlayerStatName(snap[3].name || snap[3]['Player Name'] || ''), id:snap[3].id || snap[3].playerId || 'p2b', team:result.team2, won:result.winner===result.team2, lost:result.winner===result.team1},
       ];
     } else {
-      var parts = (result.playerLine || '').split(' vs ');
-      var t1p = parts[0].split(' & ').map(function(n){return n.trim();});
-      var t2p = parts[1] ? parts[1].split(' & ').map(function(n){return n.trim();}) : ['',''];
+      var parsedNames = parsePlayerLinePlayers(result.playerLine);
       allPlayers = [
-        {name:t1p[0]||'', id:'p1a', team:result.team1, won:result.winner===result.team1, lost:result.winner===result.team2},
-        {name:t1p[1]||'', id:'p1b', team:result.team1, won:result.winner===result.team1, lost:result.winner===result.team2},
-        {name:t2p[0]||'', id:'p2a', team:result.team2, won:result.winner===result.team2, lost:result.winner===result.team1},
-        {name:t2p[1]||'', id:'p2b', team:result.team2, won:result.winner===result.team2, lost:result.winner===result.team1},
+        {name:parsedNames[0], id:'p1a', team:result.team1, won:result.winner===result.team1, lost:result.winner===result.team2},
+        {name:parsedNames[1], id:'p1b', team:result.team1, won:result.winner===result.team1, lost:result.winner===result.team2},
+        {name:parsedNames[2], id:'p2a', team:result.team2, won:result.winner===result.team2, lost:result.winner===result.team1},
+        {name:parsedNames[3], id:'p2b', team:result.team2, won:result.winner===result.team2, lost:result.winner===result.team1},
       ];
     }
-    var wlCounted = {};
-    allPlayers.forEach(function(p) {
-      if(!p.name || p.name.startsWith('Player')) return;
+
+    allPlayers.forEach(function(p, playerIndex) {
+      if(!p.name || /^Player\s/i.test(p.name)) return;
       if(!players[p.name]) {
         players[p.name] = {name:p.name, team:p.team, matchWins:0, matchLosses:0, matchTies:0,
           roundsPlayed:0, totalGross:0, totalHoles:0, bestGross:Infinity, worstGross:-Infinity,
           parDiffs:[], birdies:0, pars:0, bogeys:0, doubles:0, worse:0, holeScores:{}};
       }
       var ps = players[p.name];
-      if (!wlCounted[p.name]) {
-        if(p.won) ps.matchWins++;
-        else if(p.lost) ps.matchLosses++;
-        else ps.matchTies++;
-        wlCounted[p.name] = true;
-      }
       ps.team = p.team;
-      if (!result.scoreSnapshot || Object.keys(result.scoreSnapshot).length === 0) return;
+
+      // Count the team match result once per player per unique match.
+      if(p.won) ps.matchWins++;
+      else if(p.lost) ps.matchLosses++;
+      else ps.matchTies++;
+
+      var scoreSnapshot = result.scoreSnapshot || {};
       var grossTotal=0, holeCount=0;
       holes.forEach(function(h) {
-        var key = p.id + '_' + h.hole;
-        var raw = result.scoreSnapshot[key];
-        var gross = (raw !== undefined && raw !== null && raw !== '') ? parseInt(raw) : null;
+        var gross = getScoreForPlayerHole(scoreSnapshot, p, playerIndex, h.hole);
         if(gross===null || isNaN(gross)) return;
         holeCount++;
         grossTotal += gross;
@@ -1358,6 +1516,7 @@ function computePlayerStats() {
   });
   return players;
 }
+
 
 let currentStatFilter = 'all';
 

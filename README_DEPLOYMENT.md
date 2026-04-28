@@ -1,8 +1,6 @@
 # Hockey Guys Golf League 2026 — Fixed GitHub Pages Package
 
-This package is ready to upload to a clean GitHub Pages repository/root.
-
-## Upload these root files to GitHub
+## Upload these files to the root of your GitHub Pages repository
 
 - `index.html`
 - `admin.html`
@@ -13,31 +11,24 @@ This package is ready to upload to a clean GitHub Pages repository/root.
 - `theme-polished.css`
 - `robots.txt`
 
-The `apps-script/Code.gs` file is included only in case you want to replace/redeploy the Google Apps Script backend. Do not upload that file to Apps Script unless you are intentionally updating the backend deployment.
+## Apps Script
 
-## What was corrected
+The Apps Script backend file is included here for reference:
 
-- Clean production filenames are included. No `(1)`, `(2)`, `(3)`, or `(4)` filenames are used.
-- Public/admin pages reference the clean files with `?v=4.3-fixed` cache-busting.
-- Google Sheets requests now use true JSONP script/callback loading instead of browser `fetch()`.
-- Public site write/admin actions are disabled so `public.js` does not expose or use the default admin key.
-- Scorecard tie handling now follows your posted tiebreaker structure instead of saving a completed all-square match as a half point.
-- If the match is still tied after automatic tiebreakers, the admin is blocked from saving until reviewed manually.
-- CSS selector typos were cleaned up for better mobile rendering consistency.
-- `sync-hotfix.js` and older patch notes are intentionally excluded from the live GitHub package.
+- `apps-script/Code.gs`
 
-## Important
+If your existing Apps Script deployment is already saving scores and standings correctly, you do not need to redeploy it for this player-stats fix. The fix is in `public.js` and `admin.js`.
 
-If you are creating a brand-new Google Apps Script deployment, update `LEAGUE_API_URL` near the top of both `public.js` and `admin.js` with the new `/exec` deployment URL.
+## v4.4 stats fix
 
-If you keep using the same Google Sheet/App Script deployment, upload the GitHub files as-is.
+This package fixes player stats after Week 1:
 
-## Suggested test after upload
+- A weekly head-to-head matchup only counts once for each player in the Stats tab.
+- Duplicate saved Google Sheet result rows for the same Week/team matchup no longer make players show records like 2-0 or 0-2 after only one match.
+- Player score snapshots are parsed more aggressively from Google Sheets, including `PlayerScoresJSON`, `Player Scores JSON`, and `Score Snapshot JSON` style fields.
+- Avg/Hole, Best Round, Rounds Played, Holes Played, score distribution, and hole breakdown now use the score snapshot when available.
+- Cache-busting references were updated to `v=4.4-stats-fix` so mobile browsers pull the new files.
 
-1. Open the public page on desktop and mobile.
-2. Confirm standings/schedule/results load from Google Sheets.
-3. Open `admin.html` on mobile.
-4. Sign in.
-5. Save one test match.
-6. Refresh the public page on mobile and confirm the result/standings update.
-7. Delete the test result from the admin Manage tab.
+## Important note
+
+If the Google Sheet has old duplicate test rows, the Stats tab will no longer double-count them when they represent the same Week/team matchup. The Manage tab may still show old rows so you can delete cleanup/test rows if needed.
