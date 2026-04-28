@@ -123,16 +123,23 @@ let LEAGUE_API_DATA = null;
 
 function normalizeTeamName(name) {
   const n = String(name || '').trim();
-  const lower = n.toLowerCase();
-  if (
-    lower === 'the putter goons' ||
-    lower === 'putter goons' ||
-    lower === 'the putting goons' ||
-    lower === 'putting goons'
-  ) {
-    return 'Putting Goons';
-  }
-  return n;
+  const compact = n.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const aliases = {
+    zambogeys: 'Zambogeys',
+    bombsaway: 'Bombs Away',
+    puttinggoons: 'Putting Goons',
+    puttergoons: 'Putting Goons',
+    theputtinggoons: 'Putting Goons',
+    theputtergoons: 'Putting Goons',
+    fairwayenforcers: 'Fairway Enforcers',
+    pinsharks: 'Pin Sharks',
+    roughriders: 'Rough Riders',
+    twococksoneball: '2 Cocks 1 Ball',
+    cocksball: '2 Cocks 1 Ball',
+    two1ball: '2 Cocks 1 Ball',
+    footwedgecrew: 'Foot Wedge Crew'
+  };
+  return aliases[compact] || n;
 }
 
 function formatSheetDate(value) {
@@ -247,13 +254,118 @@ function parseLeagueJsonValue(value) {
   }
 }
 
+
+function getRowValue(row, keys) {
+  if (!row) return '';
+  for (const key of keys) {
+    if (row[key] !== undefined && row[key] !== null && row[key] !== '') return row[key];
+  }
+  const wanted = keys.map(k => String(k).toLowerCase().replace(/[^a-z0-9]/g, ''));
+  for (const actualKey of Object.keys(row)) {
+    const compact = String(actualKey).toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (wanted.includes(compact) && row[actualKey] !== undefined && row[actualKey] !== null && row[actualKey] !== '') return row[actualKey];
+  }
+  return '';
+}
+
+function normalizeSnapshotPlayer(raw, index, row) {
+  raw = raw || {};
+  row = row || {};
+  const fallbackIds = ['p1a', 'p1b', 'p2a', 'p2b'];
+  const playerNo = index + 1;
+  const team1 = normalizeTeamName(getRowValue(row, ['Team1', 'Team 1', 'team1']));
+  const team2 = normalizeTeamName(getRowValue(row, ['Team2', 'Team 2', 'team2']));
+  const sideTeam = index < 2 ? team1 : team2;
+  return {
+    id: raw.id || raw.playerId || raw.key || fallbackIds[index],
+    playerId: raw.playerId || raw.id || fallbackIds[index],
+    name: normalizePlayerStatName(raw.name || raw.Name || raw['Player Name'] || raw.player || raw.Player || getRowValue(row, [
+      'P' + playerNo + 'Name', 'P' + playerNo + ' Name', 'Player' + playerNo + 'Name', 'Player ' + playerNo + ' Name', 'Player ' + playerNo
+    ])),
+    ghin: raw.ghin || raw.GHIN || raw.index || raw.Index || getRowValue(row, [
+      'P' + playerNo + 'GHIN', 'P' + playerNo + ' GHIN', 'Player' + playerNo + 'GHIN', 'Player ' + playerNo + ' GHIN', 'Player ' + playerNo + ' Index'
+    ]),
+    team: normalizeTeamName(raw.team || raw.Team || getRowValue(row, [
+      'P' + playerNo + 'Team', 'P' + playerNo + ' Team', 'Player' + playerNo + 'Team', 'Player ' + playerNo + ' Team'
+    ]) || sideTeam)
+  };
+}
+
+function buildPlayersSnapshotFromRow(row) {
+  const fallbackIds = ['p1a', 'p1b', 'p2a', 'p2b'];
+  const players = [];
+  for (let i = 0; i < 4; i++) {
+    const playerNo = i + 1;
+    const name = getRowValue(row, [
+      'P' + playerNo + 'Name', 'P' + playerNo + ' Name', 'Player' + playerNo + 'Name', 'Player ' + playerNo + ' Name', 'Player ' + playerNo
+    ]);
+    const ghin = getRowValue(row, [
+      'P' + playerNo + 'GHIN', 'P' + playerNo + ' GHIN', 'Player' + playerNo + 'GHIN', 'Player ' + playerNo + ' GHIN', 'Player ' + playerNo + ' Index'
+    ]);
+    if (name || ghin) players.push(normalizeSnapshotPlayer({ id: fallbackIds[i], name, ghin }, i, row));
+  }
+  if (players.length >= 4) return players;
+
+  const playerLine = getRowValue(row, ['PlayerLine', 'Player Line', 'playerLine']);
+  const parsed = parsePlayerLinePlayers(playerLine);
+  if (parsed.some(Boolean)) {
+    return parsed.map(function(name, i) {
+      return normalizeSnapshotPlayer({ id: fallbackIds[i], name: name || ('Player ' + (i + 1)) }, i, row);
+    });
+  }
+  return [];
+}
+
+function getFlatScoreValue(row, playerNo, holeNo) {
+  return getRowValue(row, [
+    'P' + playerNo + 'H' + holeNo,
+    'P' + playerNo + ' H' + holeNo,
+    'P' + playerNo + '_H' + holeNo,
+    'P' + playerNo + 'Hole' + holeNo,
+    'P' + playerNo + ' Hole ' + holeNo,
+    'P' + playerNo + 'Gross' + holeNo,
+    'P' + playerNo + ' Gross ' + holeNo,
+    'Player' + playerNo + 'H' + holeNo,
+    'Player' + playerNo + 'Hole' + holeNo,
+    'Player ' + playerNo + ' H' + holeNo,
+    'Player ' + playerNo + ' Hole ' + holeNo,
+    'Player ' + playerNo + ' Gross ' + holeNo
+  ]);
+}
+
+function buildScoreSnapshotFromFlatColumns(row, playersSnapshot) {
+  const fallbackIds = ['p1a', 'p1b', 'p2a', 'p2b'];
+  const snapshot = {};
+  for (let i = 0; i < 4; i++) {
+    const playerNo = i + 1;
+    const id = (playersSnapshot[i] && (playersSnapshot[i].id || playersSnapshot[i].playerId)) || fallbackIds[i];
+    for (let holeNo = 1; holeNo <= 18; holeNo++) {
+      const raw = getFlatScoreValue(row, playerNo, holeNo);
+      const n = parseInt(raw, 10);
+      if (Number.isFinite(n) && n > 0) {
+        snapshot[id + '_' + holeNo] = n;
+        snapshot[fallbackIds[i] + '_' + holeNo] = n;
+      }
+    }
+  }
+  return snapshot;
+}
+
+function ensureSnapshotPlayerIds(playersSnapshot) {
+  const fallbackIds = ['p1a', 'p1b', 'p2a', 'p2b'];
+  return (playersSnapshot || []).slice(0, 4).map(function(p, i) {
+    return normalizeSnapshotPlayer({ ...p, id: p.id || p.playerId || fallbackIds[i] }, i, {});
+  });
+}
+
 function normalizeScorePayload(row) {
   const rawScores =
     row.PlayerScoresJSON ||
     row['Player Scores JSON'] ||
     row['Score Snapshot JSON'] ||
     row.ScoreSnapshotJSON ||
-    row.scoreSnapshotJson ||
+    row['Score Snapshot Only JSON'] ||
+    row.ScoreSnapshotOnlyJSON ||
     row.ScoreJSON ||
     row.ScoresJSON ||
     row['Scores JSON'] ||
@@ -272,23 +384,34 @@ function normalizeScorePayload(row) {
     parseLeagueJsonValue(row.PlayersSnapshotJSON || row['Players Snapshot JSON'] || '') ||
     [];
 
+  playersSnapshot = parseLeagueJsonValue(playersSnapshot) || playersSnapshot || [];
+  if (!Array.isArray(playersSnapshot) || playersSnapshot.length < 4) {
+    playersSnapshot = buildPlayersSnapshotFromRow(row);
+  } else {
+    playersSnapshot = playersSnapshot.map(function(p, i) { return normalizeSnapshotPlayer(p || {}, i, row); });
+  }
+  playersSnapshot = ensureSnapshotPlayerIds(playersSnapshot);
+
   let scoreSnapshot =
     nested.scoreSnapshot ||
     nested.ScoreSnapshot ||
     nested.scorecardScores ||
     nested.scores ||
     row.scoreSnapshot ||
-    parseLeagueJsonValue(row.ScoreSnapshot || row['Score Snapshot'] || '') ||
+    parseLeagueJsonValue(row.ScoreSnapshot || row['Score Snapshot'] || row['Score Snapshot Only JSON'] || row.ScoreSnapshotOnlyJSON || '') ||
     {};
 
-  playersSnapshot = parseLeagueJsonValue(playersSnapshot) || playersSnapshot || [];
   scoreSnapshot = parseLeagueJsonValue(scoreSnapshot) || scoreSnapshot || {};
-
-  if (!Array.isArray(playersSnapshot)) playersSnapshot = [];
   if (!scoreSnapshot || typeof scoreSnapshot !== 'object' || Array.isArray(scoreSnapshot)) scoreSnapshot = {};
+
+  const flatSnapshot = buildScoreSnapshotFromFlatColumns(row, playersSnapshot);
+  if (!Object.keys(scoreSnapshot).length || Object.keys(flatSnapshot).length > Object.keys(scoreSnapshot).length) {
+    scoreSnapshot = { ...scoreSnapshot, ...flatSnapshot };
+  }
 
   return { playersSnapshot, scoreSnapshot };
 }
+
 
 function normalizeResultFromSheet(row) {
   const scorePayload = normalizeScorePayload(row);
@@ -314,7 +437,7 @@ function normalizeResultFromSheet(row) {
     team1HolesWon: parseSheetNumber(row.Team1HolesWon || row['Team 1 Holes Won'] || row.team1HolesWon || 0),
     team2HolesWon: parseSheetNumber(row.Team2HolesWon || row['Team 2 Holes Won'] || row.team2HolesWon || 0),
     playerLine,
-    holesPlayed: Number(row.HolesPlayed || row.holesPlayed || 0),
+    holesPlayed: Number(row.HolesPlayed || row['Holes Played'] || row.holesPlayed || 0),
     playersSnapshot,
     scoreSnapshot
   };
@@ -1360,7 +1483,7 @@ function countScoreSnapshotEntries(snapshot) {
 
 function getStatsMatchKey(result, index) {
   const week = parseInt(result.week, 10) || 0;
-  const side = String(result.side || '').trim().toLowerCase();
+  const side = String(result.side || '').trim().toLowerCase().replace(/\s+/g, ' ');
   const teams = [normalizeTeamName(result.team1), normalizeTeamName(result.team2)]
     .filter(Boolean)
     .sort()
@@ -1719,8 +1842,14 @@ function toggleScorecard(btn, resultId) {
 
 function buildScorecardHTML(r) {
   var snap = r.playersSnapshot || [];
+  if (!Array.isArray(snap) || snap.length < 4) {
+    const parsedNames = parsePlayerLinePlayers(r.playerLine);
+    snap = parsedNames.map(function(name, i) {
+      return normalizeSnapshotPlayer({ id:['p1a','p1b','p2a','p2b'][i], name:name || ('Player ' + (i + 1)), team:i < 2 ? r.team1 : r.team2 }, i, { Team1:r.team1, Team2:r.team2 });
+    });
+  }
   var scores = r.scoreSnapshot || {};
-  if (!snap.length || !Object.keys(scores).length) {
+  if (!Object.keys(scores).length) {
     return '<div style="padding:10px;color:var(--muted);font-size:12px;text-align:center;">No hole-by-hole data saved for this match.</div>';
   }
 
@@ -1745,8 +1874,7 @@ function buildScorecardHTML(r) {
   // Best ball net per hole per team
   function teamNetBest(playerIdxs, hole) {
     var nets = playerIdxs.map(function(pi) {
-      var key = snap[pi].id + '_' + hole.hole;
-      var g = scores[key] !== undefined && scores[key] !== '' ? parseInt(scores[key]) : null;
+      var g = getScoreForPlayerHole(scores, snap[pi], pi, hole.hole);
       if (g === null || isNaN(g)) return null;
       return g - (strokeSets[pi].has(hole.hole) ? 1 : 0);
     }).filter(function(n) { return n !== null; });
@@ -1794,8 +1922,7 @@ function buildScorecardHTML(r) {
     var teamColor = pi < 2 ? 'rgba(0,84,164,0.25)' : 'rgba(215,25,32,0.2)';
     var grossTotal = 0; var hasAny = false;
     var cells = holes.map(function(h) {
-      var key = p.id + '_' + h.hole;
-      var g = scores[key] !== undefined && scores[key] !== '' ? parseInt(scores[key]) : null;
+      var g = getScoreForPlayerHole(scores, p, pi, h.hole);
       if (g !== null && !isNaN(g)) { grossTotal += g; hasAny = true; }
       var hasStroke = strokeSets[pi].has(h.hole);
       var sc = scoreColor(g, h.par);
@@ -1811,8 +1938,7 @@ function buildScorecardHTML(r) {
     // Net row for this player
     var netTotal = 0; var hasNet = false;
     var netCells = holes.map(function(h) {
-      var key = p.id + '_' + h.hole;
-      var g = scores[key] !== undefined && scores[key] !== '' ? parseInt(scores[key]) : null;
+      var g = getScoreForPlayerHole(scores, p, pi, h.hole);
       if (g === null || isNaN(g)) return '<td style="border:1px solid rgba(255,255,255,0.1);padding:3px;text-align:center;font-size:11px;color:var(--muted);">—</td>';
       var net = g - (strokeSets[pi].has(h.hole) ? 1 : 0);
       netTotal += net; hasNet = true;
