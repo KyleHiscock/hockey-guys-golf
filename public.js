@@ -811,27 +811,64 @@ function getSortedStandings() {
 // ── PLAYOFF MATCHUPS ──
 function buildPlayoffPicture() {
   const container = document.getElementById('playoff-picture-container');
-  if(!container) return;
+  if (!container) return;
   const sorted = getSortedStandings();
+  if (sorted.length < 8) {
+    container.innerHTML = '<div class="dash-empty" style="text-align:center;padding:12px 0;">Bracket will appear once all 8 teams have standings data.</div>';
+    return;
+  }
+
+  function teamSlot(seed, team, align) {
+    const isLeft = align === 'left';
+    return (
+      '<div class="bracket-slot bracket-slot-' + align + '">' +
+      (isLeft ? '<div class="bracket-seed">' + seed + '</div>' : '') +
+      '<div class="bracket-team-info" style="' + (isLeft ? '' : 'text-align:right;') + '">' +
+      '<div class="bracket-team-name">' + team.name + '</div>' +
+      '<div class="bracket-team-record">' + team.w + '-' + team.l + ' &nbsp;·&nbsp; ' + (team.holesWon || 0) + ' HW</div>' +
+      '</div>' +
+      (!isLeft ? '<div class="bracket-seed">' + seed + '</div>' : '') +
+      '</div>'
+    );
+  }
+
   const pairings = [[0,7],[1,6],[2,5],[3,4]];
-  container.innerHTML = pairings.map(([hi, lo])=>{
-    const highSeed = sorted[hi];
-    const lowSeed = sorted[lo];
-    if(!highSeed || !lowSeed) return '';
-    return `<div class="playoff-matchup-row">
-      <div class="playoff-team playoff-team-high">
-        <div class="playoff-seed">${hi+1}</div>
-        ${logoImg(highSeed.name,'mini-logo','m-placeholder')}
-        <div><span>${highSeed.name}</span><div class="playoff-record">${highSeed.w}-${highSeed.l} · ${highSeed.holesWon || 0} HW</div></div>
-      </div>
-      <div class="playoff-vs">VS</div>
-      <div class="playoff-team playoff-team-low">
-        <div class="playoff-seed">${lo+1}</div>
-        ${logoImg(lowSeed.name,'mini-logo','m-placeholder')}
-        <div><span>${lowSeed.name}</span><div class="playoff-record">${lowSeed.w}-${lowSeed.l} · ${lowSeed.holesWon || 0} HW</div></div>
-      </div>
-    </div>`;
-  }).join('');
+  const topPair  = pairings[0]; // 1v8
+  const topPair2 = pairings[1]; // 2v7
+  const botPair  = pairings[2]; // 3v6
+  const botPair2 = pairings[3]; // 4v5
+
+  function matchupHTML(hiIdx, loIdx) {
+    const hi = sorted[hiIdx];
+    const lo = sorted[loIdx];
+    return (
+      '<div class="bracket-matchup">' +
+      teamSlot(hiIdx+1, hi, 'left') +
+      '<div class="bracket-vs">VS</div>' +
+      teamSlot(loIdx+1, lo, 'right') +
+      '</div>'
+    );
+  }
+
+  container.innerHTML =
+    '<div class="bracket-wrap">' +
+    '<div class="bracket-round-label">Quarterfinals</div>' +
+    '<div class="bracket-round">' +
+    matchupHTML(0,7) +
+    matchupHTML(1,6) +
+    matchupHTML(2,5) +
+    matchupHTML(3,4) +
+    '</div>' +
+    '<div class="bracket-round-label">Semifinals</div>' +
+    '<div class="bracket-round bracket-semi">' +
+    '<div class="bracket-matchup bracket-tbd"><div class="bracket-slot bracket-slot-left"><div class="bracket-seed">?</div><div class="bracket-team-info"><div class="bracket-team-name">Winner 1v8</div><div class="bracket-team-record">TBD</div></div></div><div class="bracket-vs">VS</div><div class="bracket-slot bracket-slot-right"><div class="bracket-team-info" style="text-align:right"><div class="bracket-team-name">Winner 2v7</div><div class="bracket-team-record">TBD</div></div><div class="bracket-seed">?</div></div></div>' +
+    '<div class="bracket-matchup bracket-tbd"><div class="bracket-slot bracket-slot-left"><div class="bracket-seed">?</div><div class="bracket-team-info"><div class="bracket-team-name">Winner 3v6</div><div class="bracket-team-record">TBD</div></div></div><div class="bracket-vs">VS</div><div class="bracket-slot bracket-slot-right"><div class="bracket-team-info" style="text-align:right"><div class="bracket-team-name">Winner 4v5</div><div class="bracket-team-record">TBD</div></div><div class="bracket-seed">?</div></div></div>' +
+    '</div>' +
+    '<div class="bracket-round-label">Championship</div>' +
+    '<div class="bracket-round bracket-final">' +
+    '<div class="bracket-matchup bracket-tbd"><div class="bracket-slot bracket-slot-left"><div class="bracket-seed">?</div><div class="bracket-team-info"><div class="bracket-team-name">Semifinal Winner</div><div class="bracket-team-record">TBD</div></div></div><div class="bracket-vs" style="color:var(--gold);font-size:18px;">🏆</div><div class="bracket-slot bracket-slot-right"><div class="bracket-team-info" style="text-align:right"><div class="bracket-team-name">Semifinal Winner</div><div class="bracket-team-record">TBD</div></div><div class="bracket-seed">?</div></div></div>' +
+    '</div>' +
+    '</div>';
 }
 
 function escapeLeagueHtml(value) {

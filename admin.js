@@ -464,51 +464,26 @@ function applyLeagueDataFromSheet(data) {
   LEAGUE_DATA_LAST_LOADED = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
 }
 
-function leagueJsonpRequest(action, payload = {}) {
-  if (!LEAGUE_API_URL) {
-    return Promise.reject(new Error('Missing Google Sheets API URL.'));
+async function leagueJsonpRequest(action, payload = {}) {
+  if (!LEAGUE_API_URL) throw new Error('Missing Google Sheets API URL.');
+  const params = new URLSearchParams();
+  params.set('action', action);
+  params.set('v', String(Date.now()));
+  if (payload && Object.keys(payload).length) params.set('payload', JSON.stringify(payload));
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 25000);
+  try {
+    const response = await fetch(LEAGUE_API_URL + '?' + params.toString(), { method: 'GET', signal: controller.signal });
+    clearTimeout(timer);
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    const json = await response.json();
+    if (!json || json.ok === false) throw new Error((json && json.error) || 'API error');
+    return json;
+  } catch (err) {
+    clearTimeout(timer);
+    if (err.name === 'AbortError') throw new Error('Request timed out.');
+    throw err;
   }
-
-  return new Promise((resolve, reject) => {
-    const callbackName = 'hgglJsonp_' + Date.now() + '_' + Math.floor(Math.random() * 1000000);
-    const params = new URLSearchParams();
-    params.set('action', action);
-    params.set('callback', callbackName);
-    params.set('v', String(Date.now()));
-
-    if (payload && Object.keys(payload).length) {
-      params.set('payload', JSON.stringify(payload));
-    }
-
-    const script = document.createElement('script');
-    const timeout = setTimeout(() => {
-      cleanup();
-      reject(new Error('Google Sheets request timed out.'));
-    }, 25000);
-
-    function cleanup() {
-      clearTimeout(timeout);
-      try { delete window[callbackName]; } catch (e) { window[callbackName] = undefined; }
-      if (script.parentNode) script.parentNode.removeChild(script);
-    }
-
-    window[callbackName] = function(json) {
-      cleanup();
-      if (!json || json.ok === false) {
-        reject(new Error((json && json.error) || 'Google Sheets API returned an error.'));
-        return;
-      }
-      resolve(json);
-    };
-
-    script.onerror = function() {
-      cleanup();
-      reject(new Error('Google Sheets request failed to load.'));
-    };
-
-    script.src = LEAGUE_API_URL + '?' + params.toString();
-    document.head.appendChild(script);
-  });
 }
 
 async function fetchLeagueDataFromSheets(silent = false) {
@@ -2235,4 +2210,55 @@ function buildScorecardHTML(r) {
   html += '</div>';
 
   return html;
+}
+
+// Week Completion Manager
+function buildWeekCompletionManager() {
+  var list = document.getElementById('week-completion-list');
+  if (!list) return;
+  if (!SCHEDULE_WEEKS || !SCHEDULE_WEEKS.length) {
+    list.innerHTML = '<div class="dash-empty">No schedule data loaded yet.</div>';
+    return;
+  }
+  list.innerHTML = SCHEDULE_WEEKS.map(function(w) {
+    var isComplete = w.status === 'completed';
+    var info = getWeekCompletionInfo(w);
+    var autoComplete = info.isComplete;
+    var statusLabel = isComplete ? 'Completed' : (autoComplete ? 'All results in' : (info.completed + '/' + info.total + ' results entered'));
+    var btnLabel = isComplete ? 'Mark as Upcoming' : 'Mark as Completed';
+    var btnBg = isComplete ? 'rgba(255,255,255,0.1)' : '#1a4a2a';
+    var btnColor = isComplete ? '#9aaabc' : '#7cc77a';
+    var statusColor = isComplete ? '#d8b35d' : (autoComplete ? '#7cc77a' : '#9aaabc');
+    var statusIcon = isComplete ? '\u2705 ' : (autoComplete ? '\ud83d\udfe2 ' : '\u23f3 ');
+    return '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;' +
+      'background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);' +
+      'border-radius:12px;padding:12px 14px;margin-bottom:8px;">' +
+      '<div>' +
+      '<div style="font-weight:800;font-size:13px;letter-spacing:1.5px;color:#f0f4f8;">WEEK ' + w.week + ' &nbsp;\u00b7&nbsp; ' + w.date + ' &nbsp;\u00b7&nbsp; ' + w.side + '</div>' +
+      '<div style="font-size:11px;color:' + statusColor + ';margin-top:3px;">' + statusIcon + statusLabel + '</div>' +
+      '</div>' +
+      '<button onclick="toggleWeekCompletion(' + w.week + ',this,' + (isComplete ? 'false' : 'true') + ')" ' +
+      'style="background:' + btnBg + ';border:1px solid ' + btnColor + ';color:' + btnColor + ';' +
+      'font-size:12px;font-weight:700;letter-spacing:1px;' +
+      'padding:8px 14px;border-radius:999px;cursor:pointer;white-space:nowrap;">' +
+      btnLabel + '</button>' +
+      '</div>';
+  }).join('');
+}
+
+async function toggleWeekCompletion(weekNum, btn, markComplete) {
+  var origText = btn.textContent;
+  btn.textContent = 'Saving...';
+  btn.disabled = true;
+  var newStatus = markComplete ? 'completed' : 'upcoming';
+  try {
+    await postLeagueAction('setWeekStatus', { week: weekNum, status: newStatus });
+    await fetchLeagueDataFromSheets(true);
+    buildWeekCompletionManager();
+    rebuildAll();
+  } catch (err) {
+    btn.textContent = origText;
+    btn.disabled = false;
+    alert('Could not update week status: ' + err.message);
+  }
 }

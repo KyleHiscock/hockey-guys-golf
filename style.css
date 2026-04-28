@@ -471,3 +471,115 @@ body{font-family:'Barlow',sans-serif;background:var(--dark);color:var(--text);mi
   .latest-player-totals{grid-template-columns:1fr;}
   .latest-result-chip{min-width:142px;}
 }
+
+/* ── Playoff Bracket ── */
+.bracket-wrap { padding: 4px 0 8px; }
+.bracket-round-label {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  color: var(--gold, #d8b35d);
+  margin: 12px 0 6px;
+  text-align: center;
+}
+.bracket-round { display: flex; flex-direction: column; gap: 8px; }
+.bracket-matchup {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 13px;
+  padding: 10px 12px;
+}
+.bracket-matchup.bracket-tbd {
+  background: rgba(255,255,255,0.02);
+  border-color: rgba(255,255,255,0.05);
+  opacity: 0.6;
+}
+.bracket-slot { display: flex; align-items: center; gap: 8px; }
+.bracket-slot-right { justify-content: flex-end; }
+.bracket-seed {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: rgba(216,179,93,0.15);
+  border: 1px solid rgba(216,179,93,0.3);
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 13px; color: var(--gold, #d8b35d);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.bracket-team-name {
+  font-family: 'Inter Tight', 'Barlow', sans-serif;
+  font-size: 13px; font-weight: 700; color: #f0f4f8;
+  line-height: 1.15;
+}
+.bracket-team-record {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 11px; color: var(--muted, #9aaabc);
+  letter-spacing: 0.5px; margin-top: 1px;
+}
+.bracket-vs {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 14px; color: var(--muted, #9aaabc);
+  letter-spacing: 1px; text-align: center;
+  flex-shrink: 0;
+}
+.bracket-final .bracket-matchup {
+  background: rgba(216,179,93,0.08);
+  border-color: rgba(216,179,93,0.25);
+}
+
+/* ── Collapsible Results Weeks ── */
+.results-week-toggle {
+  cursor: pointer;
+  padding: 12px 14px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 13px;
+  margin-bottom: 6px;
+  user-select: none;
+  transition: background 0.15s;
+}
+.results-week-toggle:hover { background: rgba(255,255,255,0.07); }
+.results-week-toggle.open { border-color: rgba(216,179,93,0.35); }
+.results-week-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+.results-week-title {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 13px; font-weight: 800;
+  letter-spacing: 1.8px; text-transform: uppercase;
+  color: var(--gold, #d8b35d);
+}
+.results-week-chevron { font-size: 11px; color: var(--muted, #9aaabc); }
+.results-week-summary {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 12px; color: var(--muted, #9aaabc);
+  letter-spacing: 0.5px; line-height: 1.4;
+}
+.results-week-body { margin-bottom: 10px; }
+
+/* ── Latest Result Carousel Dots ── */
+.lr-dots {
+  display: flex; justify-content: center;
+  gap: 6px; margin-top: 8px; min-height: 8px;
+}
+.lr-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: rgba(255,255,255,0.25);
+  cursor: pointer; transition: background 0.2s; display: inline-block;
+}
+.lr-dot.active { background: var(--gold, #d8b35d); }
+
+@media(max-width:680px) {
+  .bracket-team-name { font-size: 11px; }
+  .bracket-team-record { font-size: 10px; }
+  .bracket-matchup { padding: 8px; gap: 5px; }
+  .bracket-seed { width: 18px; height: 18px; font-size: 11px; }
+}

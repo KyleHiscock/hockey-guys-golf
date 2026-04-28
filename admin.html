@@ -153,6 +153,7 @@
         <button class="comm-tab active" onclick="showCommTab('scorecard-tab',this)">📋 Scorecard</button>
         <button class="comm-tab" onclick="showCommTab('manage-tab',this)">🗑 Manage</button>
         <button class="comm-tab" onclick="showCommTab('note-tab',this)">📣 Note</button>
+        <button class="comm-tab" onclick="showCommTab('schedule-tab',this);buildWeekCompletionManager()">📅 Schedule</button>
       </div>
 
       <div id="scorecard-tab">
@@ -245,6 +246,12 @@
         </div>
       </div>
 
+      <div id="schedule-tab" style="display:none">
+        <div style="margin-bottom:14px;">
+          <div class="entry-label" style="margin-bottom:8px;">Mark weeks as complete to hide them from the public Schedule tab.</div>
+          <div id="week-completion-list"></div>
+        </div>
+      </div>
       <div id="manage-tab" style="display:none">
         <div class="entry-card">
           <div class="entry-title">💾 Data Backup</div>
