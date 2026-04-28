@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HGGL Debug v3</title>
+<style>
+  body { font-family: monospace; background: #111; color: #eee; padding: 16px; font-size: 13px; }
+  h2 { color: #f5c518; margin: 0 0 16px; }
+  .test { background: #1e2a3a; border-radius: 8px; padding: 12px; margin-bottom: 10px; }
+  .label { color: #9ab; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+  .result { word-break: break-all; line-height: 1.6; }
+  .ok { color: #7cc77a; } .fail { color: #d66060; } .warn { color: #f5c518; }
+  button { background: #f5c518; color: #111; border: none; border-radius: 8px; padding: 12px 20px;
+           font-weight: bold; font-size: 14px; cursor: pointer; width: 100%; margin-bottom: 12px; }
+  pre { white-space: pre-wrap; font-size: 11px; color: #9ab; margin: 0; }
+</style>
+</head>
+<body>
+<h2>HGGL Debug v3 — Schedule Focus</h2>
+<button onclick="runAll()">Run All Tests</button>
+
+<div class="test"><div class="label">1. Endpoint reachable?</div><div class="result" id="r1">—</div></div>
+<div class="test"><div class="label">2. Schedule rows in response</div><div class="result" id="r2">—</div></div>
+<div class="test"><div class="label">3. Raw schedule data (first 5 rows)</div><pre id="r3">—</pre></div>
+<div class="test"><div class="label">4. Schedule column headers</div><div class="result" id="r4">—</div></div>
+<div class="test"><div class="label">5. Week numbers found</div><div class="result" id="r5">—</div></div>
+<div class="test"><div class="label">6. Standings rows</div><div class="result" id="r6">—</div></div>
+<div class="test"><div class="label">7. Results rows</div><div class="result" id="r7">—</div></div>
+<div class="test"><div class="label">8. Is current admin.js live? (fetch check)</div><div class="result" id="r8">—</div></div>
+
+<script>
+const API = 'https://script.google.com/macros/s/AKfycbz1V4hse07WKBr2a8yTs_gD6dfNkqRXmOvzA-Ewqzos736fBg9WY_bgNX_ZUcbfCN2WOA/exec';
+
+function set(id, html, cls) {
+  var el = document.getElementById(id);
+  el.innerHTML = html;
+  if (cls) el.className = 'result ' + cls;
+}
+
+async function runAll() {
+  set('r1','Fetching...','warn');
+
+  var json = null;
+  try {
+    var res = await fetch(API + '?action=getLeagueData&v=' + Date.now());
+    json = await res.json();
+    set('r1', json.ok ? 'YES — HTTP ' + res.status : 'ERROR: ok=false — ' + json.error, json.ok ? 'ok' : 'fail');
+  } catch(e) {
+    set('r1', 'FAILED: ' + e.message, 'fail');
+    return;
+  }
+
+  var data = json.data || {};
+  var schedule = data.schedule || [];
+
+  // 2. Schedule row count
+  set('r2', schedule.length + ' rows', schedule.length > 4 ? 'ok' : 'fail');
+
+  // 3. Raw first 5 rows
+  document.getElementById('r3').textContent = JSON.stringify(schedule.slice(0,5), null, 2);
+
+  // 4. Column headers from first row
+  if (schedule.length) {
+    var headers = Object.keys(schedule[0]);
+    set('r4', headers.join(' | '), 'warn');
+  } else {
+    set('r4', 'No schedule rows returned', 'fail');
+  }
+
+  // 5. Week numbers
+  var weeks = [...new Set(schedule.map(function(r){ return r.Week || r.week || '?'; }))];
+  set('r5', weeks.length + ' weeks: ' + weeks.join(', '), weeks.length > 1 ? 'ok' : 'fail');
+
+  // 6. Standings
+  var standings = data.standings || [];
+  set('r6', standings.length + ' rows', standings.length ? 'ok' : 'warn');
+
+  // 7. Results
+  var results = data.results || [];
+  set('r7', results.length + ' rows', results.length ? 'ok' : 'warn');
+
+  // 8. Check if admin.js on GitHub has fetch() (not JSONP)
+  set('r8', 'Checking...', 'warn');
+  try {
+    var aRes = await fetch('https://kylehiscock.github.io/hockey-guys-golf/admin.js?v=' + Date.now());
+    var text = await aRes.text();
+    var hasFetch = text.includes('async function leagueJsonpRequest');
+    var hasJSONP = text.includes('document.head.appendChild(script)');
+    var weekCount = (text.match(/buildWeekCompletionManager/g) || []).length;
+    set('r8',
+      (hasFetch ? 'fetch() version deployed' : 'STILL USING JSONP — old file on GitHub') +
+      ' | JSONP present: ' + hasJSONP +
+      ' | buildWeekCompletionManager refs: ' + weekCount,
+      hasFetch && !hasJSONP ? 'ok' : 'fail');
+  } catch(e) {
+    set('r8', 'Could not fetch admin.js: ' + e.message, 'fail');
+  }
+}
+</script>
+</body>
+</html>
