@@ -217,11 +217,12 @@ function buildScheduleFromSheet(data) {
     const week = Number(row.Week || row.week || 0);
     if (!week) return;
 
-    const rowStatus = String(row.Status || '').toLowerCase();
+    const rowStatus = String(row.Status || '').trim().toLowerCase();
+    const isRowComplete = rowStatus === 'completed' || rowStatus === 'complete';
     if (!byWeek[week]) {
       byWeek[week] = { week, date: formatSheetDate(row.Date), side: row.Side || '', status: '', matchups: [] };
     }
-    if (rowStatus === 'completed') { byWeek[week].status = 'completed'; }
+    if (isRowComplete) { byWeek[week].status = 'completed'; }
     const home = normalizeTeamName(row['Team 1'] || row.Team1 || row.home || '');
     const away = normalizeTeamName(row['Team 2'] || row.Team2 || row.away || '');
 
@@ -489,7 +490,6 @@ async function fetchLeagueDataFromSheets(silent = false) {
     const json = await leagueJsonpRequest('getLeagueData');
     applyLeagueDataFromSheet(json.data || {});
     rebuildAll();
-    buildScheduledMatchSelect();
 
     if (typeof initCommissionerNoteEditor === 'function') {
       initCommissionerNoteEditor();
@@ -1607,8 +1607,6 @@ function doLogin() {
     document.getElementById('comm-user').textContent = '👋 Welcome, ' + match.name;
     document.getElementById('login-error').style.display = 'none';
     document.getElementById('login-pass').value = '';
-    // Fetch fresh data from Sheets before building entry selects
-    // so the match dropdown always has all weeks
     fetchLeagueDataFromSheets(true).then(function() {
       buildEntrySelects();
     }).catch(function() {

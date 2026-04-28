@@ -232,7 +232,7 @@ function buildScheduleFromSheet(data) {
         matchups: []
       };
     }
-    if (String(row.Status || '').toLowerCase() === 'completed') {
+    if (['completed','complete'].includes(String(row.Status || '').trim().toLowerCase())) {
       byWeek[week].status = 'completed';
     }
 
