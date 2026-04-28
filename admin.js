@@ -1607,7 +1607,13 @@ function doLogin() {
     document.getElementById('comm-user').textContent = '👋 Welcome, ' + match.name;
     document.getElementById('login-error').style.display = 'none';
     document.getElementById('login-pass').value = '';
-    buildEntrySelects();
+    // Fetch fresh data from Sheets before building entry selects
+    // so the match dropdown always has all weeks
+    fetchLeagueDataFromSheets(true).then(function() {
+      buildEntrySelects();
+    }).catch(function() {
+      buildEntrySelects();
+    });
   } else {
     document.getElementById('login-error').style.display = 'block';
   }
@@ -1640,6 +1646,8 @@ function showCommTab(id, btn) {
   document.getElementById('manage-tab').style.display = id==='manage-tab' ? 'block' : 'none';
   const noteTab = document.getElementById('note-tab');
   if(noteTab) noteTab.style.display = id==='note-tab' ? 'block' : 'none';
+  const schedTab = document.getElementById('schedule-tab');
+  if(schedTab) schedTab.style.display = id==='schedule-tab' ? 'block' : 'none';
 }
 
 function show(id, btn) {
