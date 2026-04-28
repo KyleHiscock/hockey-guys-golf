@@ -171,7 +171,10 @@ function buildTeamsFromSheet(data) {
     const team = normalizeTeamName(p.Team);
     if (!team) return;
     if (!playersByTeam[team]) playersByTeam[team] = [];
-    if (p['Player Name']) playersByTeam[team].push(p['Player Name']);
+    if (p['Player Name']) playersByTeam[team].push({
+      name: p['Player Name'],
+      ghin: String(p['GHIN Index'] || p['GHIN ID'] || p.GHINIndex || p.GHINIndex || p.Index || p.index || '')
+    });
   });
 
   const standingsByTeam = {};
@@ -191,7 +194,7 @@ function buildTeamsFromSheet(data) {
       const st = standingsByTeam[name] || {};
       const defaultTeam = DEFAULT_TEAMS.find(x => normalizeTeamName(x.name) === name);
       const players = playersByTeam[name] && playersByTeam[name].length
-        ? playersByTeam[name].join(' & ')
+        ? playersByTeam[name].map(function(p){ return typeof p === 'object' ? p.name : p; }).join(' & ')
         : defaultTeam
           ? defaultTeam.players
           : '';
@@ -441,9 +444,24 @@ function normalizeResultFromSheet(row) {
 }
 
 
+var PLAYERS_BY_TEAM = {};
+
 function applyLeagueDataFromSheet(data) {
   LEAGUE_API_DATA = data;
   TEAMS = buildTeamsFromSheet(data);
+
+  // Build PLAYERS_BY_TEAM with name + GHIN index for scorecard auto-fill
+  PLAYERS_BY_TEAM = {};
+  (data.players || []).forEach(function(p) {
+    if (String(p['Active?'] || p.Active || '').toLowerCase() === 'no') return;
+    const team = normalizeTeamName(p.Team);
+    if (!team || !p['Player Name']) return;
+    if (!PLAYERS_BY_TEAM[team]) PLAYERS_BY_TEAM[team] = [];
+    PLAYERS_BY_TEAM[team].push({
+      name: p['Player Name'],
+      ghin: String(p['GHIN Index'] || p['GHIN ID'] || p.Index || p.index || '').trim()
+    });
+  });
 
   if (data.schedule && data.schedule.length) {
     SCHEDULE_WEEKS = buildScheduleFromSheet(data);
@@ -1015,6 +1033,18 @@ function applyScheduledMatch() {
   document.getElementById('sc-side').value = sideValueFromLabel(week.side);
   document.getElementById('sc-team1').value = matchup.home;
   document.getElementById('sc-team2').value = matchup.away;
+
+  // Auto-fill players from PLAYERS_BY_TEAM
+  const team1Players = PLAYERS_BY_TEAM[normalizeTeamName(matchup.home)] || [];
+  const team2Players = PLAYERS_BY_TEAM[normalizeTeamName(matchup.away)] || [];
+  const ids = ['p1a', 'p1b', 'p2a', 'p2b'];
+  [team1Players[0], team1Players[1], team2Players[0], team2Players[1]].forEach(function(p, i) {
+    const nameEl = document.getElementById(ids[i] + '-name');
+    const ghinEl = document.getElementById(ids[i] + '-ghin');
+    if (nameEl && p && p.name) nameEl.value = p.name;
+    if (ghinEl && p && p.ghin) ghinEl.value = p.ghin;
+  });
+
   renderScorecard();
 }
 
