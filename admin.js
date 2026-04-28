@@ -217,13 +217,21 @@ function buildScheduleFromSheet(data) {
     const week = Number(row.Week || row.week || 0);
     if (!week) return;
 
+    const rowStatus = String(row.Status || '').toLowerCase();
+
     if (!byWeek[week]) {
       byWeek[week] = {
         week,
         date: formatSheetDate(row.Date),
         side: row.Side || '',
+        status: '',
         matchups: []
       };
+    }
+
+    // Promote completed status to week level
+    if (rowStatus === 'completed') {
+      byWeek[week].status = 'completed';
     }
 
     const home = normalizeTeamName(row['Team 1'] || row.Team1 || row.home || '');
@@ -233,7 +241,7 @@ function buildScheduleFromSheet(data) {
       time: row['Tee Time'] || row.TeeTime || '',
       home: home || 'TBD',
       away: away || 'TBD',
-      status: row.Status || '',
+      status: rowStatus,
       matchId: row.MatchID || ''
     });
   });
@@ -2217,7 +2225,12 @@ function buildWeekCompletionManager() {
   var list = document.getElementById('week-completion-list');
   if (!list) return;
   if (!SCHEDULE_WEEKS || !SCHEDULE_WEEKS.length) {
-    list.innerHTML = '<div class="dash-empty">No schedule data loaded yet.</div>';
+    list.innerHTML = '<div class="dash-empty" style="padding:12px;text-align:center;">Loading schedule from Google Sheets...</div>';
+    fetchLeagueDataFromSheets(true).then(function() {
+      buildWeekCompletionManager();
+    }).catch(function() {
+      list.innerHTML = '<div class="dash-empty" style="padding:12px;color:var(--red);">Could not load schedule. Check your connection.</div>';
+    });
     return;
   }
   list.innerHTML = SCHEDULE_WEEKS.map(function(w) {
@@ -2255,6 +2268,7 @@ async function toggleWeekCompletion(weekNum, btn, markComplete) {
     await postLeagueAction('setWeekStatus', { week: weekNum, status: newStatus });
     await fetchLeagueDataFromSheets(true);
     buildWeekCompletionManager();
+    buildScheduledMatchDropdown();
     rebuildAll();
   } catch (err) {
     btn.textContent = origText;
