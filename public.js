@@ -1763,6 +1763,11 @@ function computePlayerStats() {
         ps.roundsPlayed++;
         if(grossTotal < ps.bestGross) ps.bestGross = grossTotal;
         if(grossTotal > ps.worstGross) ps.worstGross = grossTotal;
+        // Track best/worst net round using full individual handicap
+        var fullHdcpRound = nineHoleHdcp(parseFloat(p.ghin || 0), side) || 0;
+        var netTotal = grossTotal - fullHdcpRound;
+        if(ps.bestNet === undefined || netTotal < ps.bestNet) ps.bestNet = netTotal;
+        if(ps.worstNet === undefined || netTotal > ps.worstNet) ps.worstNet = netTotal;
       }
     });
   });
@@ -1847,6 +1852,8 @@ function buildStats() {
     const initials = p.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
     const bestG = p.bestGross!==Infinity?p.bestGross:'—';
     const worstG = p.worstGross!==-Infinity?p.worstGross:'—';
+    const bestN = (p.bestNet !== undefined && p.bestNet !== Infinity) ? p.bestNet : '—';
+    const worstN = (p.worstNet !== undefined && p.worstNet !== -Infinity) ? p.worstNet : '—';
     const maxBar = Math.max(p.birdies,p.pars,p.bogeys,p.doubles,p.worse,1);
     const cardId = 'psc_' + p.name.replace(/[^a-zA-Z0-9]/g,'_');
     const avgVsParNum = parseFloat(avgVsPar);
@@ -1887,15 +1894,17 @@ function buildStats() {
       '<div class="psc-stats-grid">' +
         '<div class="psc-stat"><div class="psc-stat-num">' + winPct + '%</div><div class="psc-stat-label">Win %</div></div>' +
         '<div class="psc-stat"><div class="psc-stat-num">' + avgGross + '</div><div class="psc-stat-label">Avg/Hole</div></div>' +
-        '<div class="psc-stat"><div class="psc-stat-num" style="color:var(--gold)">' + bestG + '</div><div class="psc-stat-label">Best Round</div></div>' +
+        '<div class="psc-stat"><div class="psc-stat-num" style="color:var(--gold)">' + bestG + '</div><div class="psc-stat-label">Best Gross</div></div>' +
         '<div class="psc-stat"><div class="psc-stat-num" style="color:' + avgVsParColor + '">' + avgVsParStr + '</div><div class="psc-stat-label">Avg vs Par</div></div>' +
       '</div>' +
       '<div class="psc-detail" id="' + cardId + '">' +
         '<div class="psc-detail-grid">' +
           '<div class="psc-detail-item"><span class="psc-detail-label">Rounds</span><span class="psc-detail-val">' + p.roundsPlayed + '</span></div>' +
           '<div class="psc-detail-item"><span class="psc-detail-label">Holes Played</span><span class="psc-detail-val">' + p.totalHoles + '</span></div>' +
-          '<div class="psc-detail-item"><span class="psc-detail-label">Best Round</span><span class="psc-detail-val" style="color:var(--gold)">' + bestG + '</span></div>' +
-          '<div class="psc-detail-item"><span class="psc-detail-label">Worst Round</span><span class="psc-detail-val">' + worstG + '</span></div>' +
+          '<div class="psc-detail-item"><span class="psc-detail-label">Best Gross</span><span class="psc-detail-val" style="color:var(--gold)">' + bestG + '</span></div>' +
+          '<div class="psc-detail-item"><span class="psc-detail-label">Worst Gross</span><span class="psc-detail-val" style="color:var(--red)">' + worstG + '</span></div>' +
+          '<div class="psc-detail-item"><span class="psc-detail-label">Best Net</span><span class="psc-detail-val" style="color:var(--green)">' + bestN + '</span></div>' +
+          '<div class="psc-detail-item"><span class="psc-detail-label">Worst Net</span><span class="psc-detail-val">' + worstN + '</span></div>' +
           '<div class="psc-detail-item"><span class="psc-detail-label">Birdies/Eagles</span><span class="psc-detail-val" style="color:var(--gold)">' + p.birdies + '</span></div>' +
           '<div class="psc-detail-item"><span class="psc-detail-label">Pars</span><span class="psc-detail-val" style="color:var(--green)">' + p.pars + '</span></div>' +
           '<div class="psc-detail-item"><span class="psc-detail-label">Bogeys</span><span class="psc-detail-val">' + p.bogeys + '</span></div>' +
