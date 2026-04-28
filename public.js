@@ -464,51 +464,26 @@ function applyLeagueDataFromSheet(data) {
   LEAGUE_DATA_LAST_LOADED = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
 }
 
-function leagueJsonpRequest(action, payload = {}) {
-  if (!LEAGUE_API_URL) {
-    return Promise.reject(new Error('Missing Google Sheets API URL.'));
+async function leagueJsonpRequest(action, payload = {}) {
+  if (!LEAGUE_API_URL) throw new Error('Missing Google Sheets API URL.');
+  const params = new URLSearchParams();
+  params.set('action', action);
+  params.set('v', String(Date.now()));
+  if (payload && Object.keys(payload).length) params.set('payload', JSON.stringify(payload));
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 25000);
+  try {
+    const response = await fetch(LEAGUE_API_URL + '?' + params.toString(), { method: 'GET', signal: controller.signal });
+    clearTimeout(timer);
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    const json = await response.json();
+    if (!json || json.ok === false) throw new Error((json && json.error) || 'API error');
+    return json;
+  } catch (err) {
+    clearTimeout(timer);
+    if (err.name === 'AbortError') throw new Error('Request timed out.');
+    throw err;
   }
-
-  return new Promise((resolve, reject) => {
-    const callbackName = 'hgglJsonp_' + Date.now() + '_' + Math.floor(Math.random() * 1000000);
-    const params = new URLSearchParams();
-    params.set('action', action);
-    params.set('callback', callbackName);
-    params.set('v', String(Date.now()));
-
-    if (payload && Object.keys(payload).length) {
-      params.set('payload', JSON.stringify(payload));
-    }
-
-    const script = document.createElement('script');
-    const timeout = setTimeout(() => {
-      cleanup();
-      reject(new Error('Google Sheets request timed out.'));
-    }, 25000);
-
-    function cleanup() {
-      clearTimeout(timeout);
-      try { delete window[callbackName]; } catch (e) { window[callbackName] = undefined; }
-      if (script.parentNode) script.parentNode.removeChild(script);
-    }
-
-    window[callbackName] = function(json) {
-      cleanup();
-      if (!json || json.ok === false) {
-        reject(new Error((json && json.error) || 'Google Sheets API returned an error.'));
-        return;
-      }
-      resolve(json);
-    };
-
-    script.onerror = function() {
-      cleanup();
-      reject(new Error('Google Sheets request failed to load.'));
-    };
-
-    script.src = LEAGUE_API_URL + '?' + params.toString();
-    document.head.appendChild(script);
-  });
 }
 
 async function fetchLeagueDataFromSheets(silent = false) {
