@@ -714,7 +714,7 @@ function buildDashboard() {
       </div>
     </div>
     <div class="dashboard-grid dashboard-grid-two">
-      <div class="dash-card"><div class="dash-label">Current #1 Seed</div><div class="dash-value">${leader ? leader.name : 'TBD'}</div><div class="dash-sub">${leader ? `${leader.w}-${leader.l} · ${leader.holesWon || 0} holes won` : 'No matches yet'}</div></div>
+      <div class="dash-card league-leaders-card"><div class="dash-label">League Leaders</div>${(typeof buildLeadersCardHTML === 'function') ? buildLeadersCardHTML() : ''}</div>
       <div class="dash-card ice latest-results-card" id="latest-result-card">
         <div class="dash-label" id="lr-label">${latestLabel}</div>
         <div id="lr-score" class="dash-value">${latestScore}</div>
