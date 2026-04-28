@@ -470,6 +470,7 @@ function applyLeagueDataFromSheet(data) {
     localStorage.setItem('hggl2026_commissioner_note', String(data.commissionerNote));
   }
 
+  if (typeof applySkinsCtpFromSheet === 'function') applySkinsCtpFromSheet(data);
   LEAGUE_DATA_SOURCE = 'Google Sheets';
   LEAGUE_DATA_LAST_LOADED = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
 }
@@ -2148,4 +2149,156 @@ function buildScorecardHTML(r) {
   html += '</div>';
 
   return html;
+}
+
+// ── SKINS & CTP ──────────────────────────────────────────────────────────────
+
+var SKINS_DATA = [];
+var CTP_DATA = [];
+
+function applySkinsCtpFromSheet(data) {
+  SKINS_DATA = (data.skins || []).filter(function(r) {
+    return r.Week && r.Player;
+  });
+  CTP_DATA = (data.ctp || []).filter(function(r) {
+    return r.Week && r.Player;
+  });
+}
+
+function buildExtras() {
+  var container = document.getElementById('extras-container');
+  if (!container) return;
+
+  var hasSkins = SKINS_DATA.length > 0;
+  var hasCTP = CTP_DATA.length > 0;
+
+  if (!hasSkins && !hasCTP) {
+    container.innerHTML = '<div class="no-results"><div class="no-results-icon">\ud83c\udfc6</div><div class="no-results-text">No skins or CTP results yet<br>Check back after Week 1</div></div>';
+    return;
+  }
+
+  var html = '';
+
+  // ── SKINS ────────────────────────────────────────────────────────────────
+  if (hasSkins) {
+    // Season leaderboard
+    var skinsByPlayer = {};
+    SKINS_DATA.forEach(function(r) {
+      var name = String(r.Player || '').trim();
+      if (!name) return;
+      if (!skinsByPlayer[name]) skinsByPlayer[name] = { name: name, skins: 0, payout: 0 };
+      skinsByPlayer[name].skins += Number(r.Skins || r['# Skins'] || 1);
+      skinsByPlayer[name].payout += Number(String(r.Payout || r['Payout ($)'] || 0).replace(/[$,]/g, ''));
+    });
+    var skinsLeaders = Object.values(skinsByPlayer).sort(function(a, b) {
+      return b.payout !== a.payout ? b.payout - a.payout : b.skins - a.skins;
+    });
+
+    html += '<div class="section-header" style="margin-top:0"><span class="section-label" style="font-size:18px">Net Skins</span><div class="section-header-line"></div></div>';
+
+    // Leaderboard table
+    html += '<div class="extras-card" style="margin-bottom:16px;">';
+    html += '<div class="extras-card-title">Season Leaderboard</div>';
+    html += '<table class="extras-table"><thead><tr><th>#</th><th style="text-align:left">Player</th><th>Skins</th><th>Payout</th></tr></thead><tbody>';
+    skinsLeaders.forEach(function(p, i) {
+      html += '<tr class="' + (i===0?'extras-leader':'') + '">' +
+        '<td style="color:var(--muted);font-size:12px;">' + (i+1) + '</td>' +
+        '<td style="text-align:left;font-weight:700;color:#f0f4f8;">' + p.name + '</td>' +
+        '<td style="color:var(--ice);font-family:\'Bebas Neue\',sans-serif;font-size:22px;">' + p.skins + '</td>' +
+        '<td style="color:var(--green);font-weight:700;">$' + p.payout.toFixed(2) + '</td>' +
+        '</tr>';
+    });
+    html += '</tbody></table></div>';
+
+    // Week by week results
+    var skinsByWeek = {};
+    SKINS_DATA.forEach(function(r) {
+      var w = String(r.Week || '');
+      if (!skinsByWeek[w]) skinsByWeek[w] = [];
+      skinsByWeek[w].push(r);
+    });
+    var sortedSkinsWeeks = Object.keys(skinsByWeek).sort(function(a,b){ return b-a; });
+
+    html += '<div class="extras-card">';
+    html += '<div class="extras-card-title">Week by Week</div>';
+    sortedSkinsWeeks.forEach(function(week) {
+      var rows = skinsByWeek[week];
+      var weekPot = rows.reduce(function(s,r){ return s + Number(String(r['Total Pot'] || r.TotalPot || r.Pot || 0).replace(/[$,]/g,'')); }, 0);
+      html += '<div class="extras-week-label">Week ' + week + (weekPot ? ' &nbsp;&middot;&nbsp; Pot: $' + weekPot.toFixed(2) : '') + '</div>';
+      html += '<table class="extras-table" style="margin-bottom:12px;"><thead><tr><th style="text-align:left">Player</th><th>Hole</th><th>Skins</th><th>Payout</th></tr></thead><tbody>';
+      rows.forEach(function(r) {
+        var payout = Number(String(r.Payout || r['Payout ($)'] || 0).replace(/[$,]/g,''));
+        var skins = Number(r.Skins || r['# Skins'] || 1);
+        html += '<tr>' +
+          '<td style="text-align:left;font-weight:700;color:#f0f4f8;">' + (r.Player||'') + '</td>' +
+          '<td style="color:var(--gold);">' + (r.Hole || r['Hole(s)'] || '—') + '</td>' +
+          '<td style="color:var(--ice);font-family:\'Bebas Neue\',sans-serif;font-size:20px;">' + skins + '</td>' +
+          '<td style="color:var(--green);font-weight:700;">$' + payout.toFixed(2) + '</td>' +
+          '</tr>';
+      });
+      html += '</tbody></table>';
+    });
+    html += '</div>';
+  }
+
+  // ── CLOSEST TO THE PIN ────────────────────────────────────────────────────
+  if (hasCTP) {
+    var ctpByPlayer = {};
+    CTP_DATA.forEach(function(r) {
+      var name = String(r.Player || '').trim();
+      if (!name) return;
+      if (!ctpByPlayer[name]) ctpByPlayer[name] = { name: name, wins: 0, payout: 0 };
+      ctpByPlayer[name].wins++;
+      ctpByPlayer[name].payout += Number(String(r.Payout || r['Payout ($)'] || 0).replace(/[$,]/g,''));
+    });
+    var ctpLeaders = Object.values(ctpByPlayer).sort(function(a,b) {
+      return b.wins !== a.wins ? b.wins - a.wins : b.payout - a.payout;
+    });
+
+    html += '<div class="section-header" style="margin-top:20px"><span class="section-label" style="font-size:18px">Closest to the Pin</span><div class="section-header-line"></div></div>';
+
+    // CTP Leaderboard
+    html += '<div class="extras-card" style="margin-bottom:16px;">';
+    html += '<div class="extras-card-title">Season Leaderboard</div>';
+    html += '<table class="extras-table"><thead><tr><th>#</th><th style="text-align:left">Player</th><th>Wins</th><th>Payout</th></tr></thead><tbody>';
+    ctpLeaders.forEach(function(p, i) {
+      html += '<tr class="' + (i===0?'extras-leader':'') + '">' +
+        '<td style="color:var(--muted);font-size:12px;">' + (i+1) + '</td>' +
+        '<td style="text-align:left;font-weight:700;color:#f0f4f8;">' + p.name + '</td>' +
+        '<td style="color:var(--ice);font-family:\'Bebas Neue\',sans-serif;font-size:22px;">' + p.wins + '</td>' +
+        '<td style="color:var(--green);font-weight:700;">$' + p.payout.toFixed(2) + '</td>' +
+        '</tr>';
+    });
+    html += '</tbody></table></div>';
+
+    // CTP week by week
+    var ctpByWeek = {};
+    CTP_DATA.forEach(function(r) {
+      var w = String(r.Week || '');
+      if (!ctpByWeek[w]) ctpByWeek[w] = [];
+      ctpByWeek[w].push(r);
+    });
+    var sortedCtpWeeks = Object.keys(ctpByWeek).sort(function(a,b){ return b-a; });
+
+    html += '<div class="extras-card">';
+    html += '<div class="extras-card-title">Week by Week</div>';
+    sortedCtpWeeks.forEach(function(week) {
+      var rows = ctpByWeek[week];
+      html += '<div class="extras-week-label">Week ' + week + '</div>';
+      html += '<table class="extras-table" style="margin-bottom:12px;"><thead><tr><th style="text-align:left">Player</th><th>Hole</th><th>Distance</th><th>Payout</th></tr></thead><tbody>';
+      rows.forEach(function(r) {
+        var payout = Number(String(r.Payout || r['Payout ($)'] || 0).replace(/[$,]/g,''));
+        html += '<tr>' +
+          '<td style="text-align:left;font-weight:700;color:#f0f4f8;">' + (r.Player||'') + '</td>' +
+          '<td style="color:var(--gold);">Hole ' + (r.Hole||'—') + '</td>' +
+          '<td style="color:var(--ice);font-weight:700;">' + (r.Distance || r['Distance (ft/in)'] || '—') + '</td>' +
+          '<td style="color:var(--green);font-weight:700;">$' + payout.toFixed(2) + '</td>' +
+          '</tr>';
+      });
+      html += '</tbody></table>';
+    });
+    html += '</div>';
+  }
+
+  container.innerHTML = html;
 }

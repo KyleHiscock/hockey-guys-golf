@@ -1676,6 +1676,8 @@ function showCommTab(id, btn) {
   if(noteTab) noteTab.style.display = id==='note-tab' ? 'block' : 'none';
   const schedTab = document.getElementById('schedule-tab');
   if(schedTab) schedTab.style.display = id==='schedule-tab' ? 'block' : 'none';
+  const extrasTab = document.getElementById('extras-tab');
+  if(extrasTab) extrasTab.style.display = id==='extras-tab' ? 'block' : 'none';
 }
 
 function show(id, btn) {
@@ -2299,5 +2301,129 @@ async function toggleWeekCompletion(weekNum, btn, markComplete) {
     btn.textContent = origText;
     btn.disabled = false;
     alert('Could not update: ' + err.message);
+  }
+}
+
+// ── EXTRAS (SKINS + CTP) MANAGER ─────────────────────────────────────────────
+
+async function saveSkinsEntry() {
+  const msg = document.getElementById('skins-msg');
+  const week = document.getElementById('skins-week').value.trim();
+  const player = document.getElementById('skins-player').value.trim();
+  const hole = document.getElementById('skins-hole').value.trim();
+  const count = document.getElementById('skins-count').value.trim();
+  const pot = document.getElementById('skins-pot').value.trim();
+  const payout = document.getElementById('skins-payout').value.trim();
+  const notes = document.getElementById('skins-notes').value.trim();
+
+  if (!week || !player || !payout) {
+    msg.textContent = 'Week, Player, and Payout are required.';
+    msg.style.color = 'var(--red, #d66060)';
+    msg.style.display = 'block';
+    return;
+  }
+
+  msg.textContent = 'Saving...';
+  msg.style.color = 'var(--muted)';
+  msg.style.display = 'block';
+
+  try {
+    await postLeagueAction('saveSkins', {
+      entry: { Week: week, Player: player, Hole: hole, Skins: count || 1, TotalPot: pot, Payout: payout, Notes: notes }
+    });
+    msg.textContent = 'Skins entry saved!';
+    msg.style.color = 'var(--green, #7cc77a)';
+    document.getElementById('skins-player').value = '';
+    document.getElementById('skins-hole').value = '';
+    document.getElementById('skins-count').value = '1';
+    document.getElementById('skins-pot').value = '';
+    document.getElementById('skins-payout').value = '';
+    document.getElementById('skins-notes').value = '';
+    await fetchLeagueDataFromSheets(true);
+    buildExtrasManager();
+  } catch(err) {
+    msg.textContent = 'Error: ' + err.message;
+    msg.style.color = 'var(--red, #d66060)';
+  }
+}
+
+async function saveCtpEntry() {
+  const msg = document.getElementById('ctp-msg');
+  const week = document.getElementById('ctp-week').value.trim();
+  const player = document.getElementById('ctp-player').value.trim();
+  const hole = document.getElementById('ctp-hole').value;
+  const distance = document.getElementById('ctp-distance').value.trim();
+  const payout = document.getElementById('ctp-payout').value.trim();
+  const notes = document.getElementById('ctp-notes').value.trim();
+
+  if (!week || !player || !distance || !payout) {
+    msg.textContent = 'Week, Player, Distance, and Payout are required.';
+    msg.style.color = 'var(--red, #d66060)';
+    msg.style.display = 'block';
+    return;
+  }
+
+  msg.textContent = 'Saving...';
+  msg.style.color = 'var(--muted)';
+  msg.style.display = 'block';
+
+  try {
+    await postLeagueAction('saveCTP', {
+      entry: { Week: week, Player: player, Hole: hole, Distance: distance, Payout: payout, Notes: notes }
+    });
+    msg.textContent = 'CTP entry saved!';
+    msg.style.color = 'var(--green, #7cc77a)';
+    document.getElementById('ctp-player').value = '';
+    document.getElementById('ctp-distance').value = '';
+    document.getElementById('ctp-payout').value = '';
+    document.getElementById('ctp-notes').value = '';
+    await fetchLeagueDataFromSheets(true);
+    buildExtrasManager();
+  } catch(err) {
+    msg.textContent = 'Error: ' + err.message;
+    msg.style.color = 'var(--red, #d66060)';
+  }
+}
+
+function buildExtrasManager() {
+  const list = document.getElementById('extras-manager-list');
+  if (!list) return;
+
+  const allExtras = [
+    ...(typeof SKINS_DATA !== 'undefined' ? SKINS_DATA : []).map(function(r){ return {...r, _type:'skins'}; }),
+    ...(typeof CTP_DATA !== 'undefined' ? CTP_DATA : []).map(function(r){ return {...r, _type:'ctp'}; })
+  ].sort(function(a,b){ return Number(b.Week)-Number(a.Week); });
+
+  if (!allExtras.length) {
+    list.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:8px 0;">No skins or CTP entries yet.</div>';
+    return;
+  }
+
+  list.innerHTML = '<div class="extras-card-title" style="margin-bottom:10px;">Saved Entries</div>' +
+    allExtras.map(function(r) {
+      var label = r._type === 'skins'
+        ? 'Skins · Week ' + r.Week + ' · ' + r.Player + ' · Hole ' + (r.Hole||'?') + ' · $' + (r.Payout||0)
+        : 'CTP · Week ' + r.Week + ' · ' + r.Player + ' · Hole ' + (r.Hole||'?') + ' · ' + (r.Distance||'?') + ' · $' + (r.Payout||0);
+      var id = r.EntryID || r.ResultID || '';
+      var action = r._type === 'skins' ? 'deleteSkins' : 'deleteCTP';
+      return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;' +
+        'background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);' +
+        'border-radius:10px;padding:10px 12px;margin-bottom:6px;">' +
+        '<span style="font-size:12px;color:#f0f4f8;">' + label + '</span>' +
+        (id ? '<button onclick="deleteExtrasEntry(\'' + action + '\',\'' + id + '\')" ' +
+          'style="background:rgba(214,96,96,0.15);border:1px solid #d66060;color:#d66060;' +
+          'font-size:11px;padding:4px 10px;border-radius:999px;cursor:pointer;">Delete</button>' : '') +
+        '</div>';
+    }).join('');
+}
+
+async function deleteExtrasEntry(action, entryId) {
+  if (!confirm('Delete this entry?')) return;
+  try {
+    await postLeagueAction(action, { entryId: entryId });
+    await fetchLeagueDataFromSheets(true);
+    buildExtrasManager();
+  } catch(err) {
+    alert('Could not delete: ' + err.message);
   }
 }

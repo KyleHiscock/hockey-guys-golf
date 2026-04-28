@@ -36,6 +36,7 @@
   <button class="nav-btn" onclick="show('standings',this)">Standings</button>
   <button class="nav-btn" onclick="show('schedule',this)">Schedule</button>
   <button class="nav-btn" onclick="show('results',this)">Results</button>
+  <button class="nav-btn" onclick="show('extras',this);buildExtras()">Skins &amp; CTP</button>
   <button class="nav-btn" onclick="show('stats',this);buildStats()">Stats</button>
   <button class="nav-btn" onclick="show('rules',this)">Rules</button>
 </div>
@@ -119,6 +120,12 @@
     </div>
   </div>
 
+
+  <div id="extras" class="section">
+    <div class="section-header"><span class="section-label">Skins &amp; CTP</span><div class="section-header-line"></div></div>
+    <p class="section-subtitle">Weekly net skins results and closest to the pin contest winners.</p>
+    <div id="extras-container"><div class="no-results"><div class="no-results-icon">🏆</div><div class="no-results-text">No skins or CTP results yet<br>Check back after Week 1</div></div></div>
+  </div>
 
   <div id="rules" class="section">
     <div class="section-header"><span class="section-label">League Rules</span><div class="section-header-line"></div></div>

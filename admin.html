@@ -154,6 +154,7 @@
         <button class="comm-tab" onclick="showCommTab('manage-tab',this)">🗑 Manage</button>
         <button class="comm-tab" onclick="showCommTab('note-tab',this)">📣 Note</button>
         <button class="comm-tab" onclick="showCommTab('schedule-tab',this);buildWeekCompletionManager()">📅 Schedule</button>
+        <button class="comm-tab" onclick="showCommTab('extras-tab',this);buildExtrasManager()">🏆 Extras</button>
       </div>
 
       <div id="scorecard-tab">
@@ -252,6 +253,55 @@
           <div id="week-completion-list"></div>
         </div>
       </div>
+      <div id="extras-tab" style="display:none">
+        <div class="entry-label" style="margin-bottom:16px;">Enter weekly Net Skins winners and Closest to the Pin results.</div>
+
+        <div class="extras-entry-section">
+          <div class="extras-entry-title">🏆 Net Skins</div>
+          <div class="entry-row">
+            <div><label class="field-label">Week</label><input class="field-input" type="number" id="skins-week" min="1" max="18" placeholder="1"></div>
+            <div><label class="field-label">Player</label><input class="field-input" type="text" id="skins-player" placeholder="Player name" list="roster-options"></div>
+            <div><label class="field-label">Winning Hole(s)</label><input class="field-input" type="text" id="skins-hole" placeholder="e.g. 4 or 4,7"></div>
+          </div>
+          <div class="entry-row">
+            <div><label class="field-label"># Skins Won</label><input class="field-input" type="number" id="skins-count" min="1" value="1"></div>
+            <div><label class="field-label">Total Pot ($)</label><input class="field-input" type="number" id="skins-pot" min="0" step="0.01" placeholder="e.g. 48.00"></div>
+            <div><label class="field-label">Payout ($)</label><input class="field-input" type="number" id="skins-payout" min="0" step="0.01" placeholder="e.g. 24.00"></div>
+          </div>
+          <div class="entry-row">
+            <div><label class="field-label">Notes (optional)</label><input class="field-input" type="text" id="skins-notes" placeholder="e.g. Carried over from Week 1"></div>
+          </div>
+          <button class="save-btn" onclick="saveSkinsEntry()">Save Skins Entry</button>
+          <div id="skins-msg" style="display:none;margin-top:8px;font-size:12px;"></div>
+        </div>
+
+        <div class="extras-entry-section" style="margin-top:20px;">
+          <div class="extras-entry-title">📍 Closest to the Pin</div>
+          <div class="entry-row">
+            <div><label class="field-label">Week</label><input class="field-input" type="number" id="ctp-week" min="1" max="18" placeholder="1"></div>
+            <div><label class="field-label">Player</label><input class="field-input" type="text" id="ctp-player" placeholder="Player name" list="roster-options"></div>
+            <div>
+              <label class="field-label">Hole</label>
+              <select class="field-select" id="ctp-hole">
+                <option value="2">Hole 2 (Front Par 3)</option>
+                <option value="8">Hole 8 (Front Par 3)</option>
+                <option value="12">Hole 12 (Back Par 3)</option>
+                <option value="14">Hole 14 (Back Par 3)</option>
+              </select>
+            </div>
+          </div>
+          <div class="entry-row">
+            <div><label class="field-label">Distance</label><input class="field-input" type="text" id="ctp-distance" placeholder="e.g. 4'3&quot;"></div>
+            <div><label class="field-label">Payout ($)</label><input class="field-input" type="number" id="ctp-payout" min="0" step="0.01" placeholder="e.g. 8.00"></div>
+            <div><label class="field-label">Notes (optional)</label><input class="field-input" type="text" id="ctp-notes" placeholder="Optional"></div>
+          </div>
+          <button class="save-btn" onclick="saveCtpEntry()">Save CTP Entry</button>
+          <div id="ctp-msg" style="display:none;margin-top:8px;font-size:12px;"></div>
+        </div>
+
+        <div id="extras-manager-list" style="margin-top:24px;"></div>
+      </div>
+
       <div id="manage-tab" style="display:none">
         <div class="entry-card">
           <div class="entry-title">💾 Data Backup</div>

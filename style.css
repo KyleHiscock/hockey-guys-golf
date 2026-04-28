@@ -472,40 +472,67 @@ body{font-family:'Barlow',sans-serif;background:var(--dark);color:var(--text);mi
   .latest-result-chip{min-width:142px;}
 }
 
-/* ── League Leaders Card ── */
-.league-leaders-card { position: relative; overflow: hidden; }
-.league-leaders-card::before { background: var(--gold, #d8b35d) !important; }
-.leaders-strip { margin-top: 4px; display: flex; flex-direction: column; gap: 7px; }
-.leader-row {
-  display: grid;
-  grid-template-columns: 80px 56px 1fr;
-  align-items: center;
-  gap: 6px;
-  background: rgba(255,255,255,0.05);
-  border-radius: 8px;
-  padding: 6px 8px;
+/* ── Skins & CTP Extras Tab ── */
+.extras-card {
+  background: linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.022));
+  border: 1px solid var(--line, rgba(255,255,255,0.09));
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
 }
-.leader-cat {
+.extras-card-title {
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
-  letter-spacing: 1.2px;
+  letter-spacing: 2px;
   text-transform: uppercase;
   color: var(--gold, #d8b35d);
+  margin-bottom: 10px;
 }
-.leader-val {
-  font-family: 'Bebas Neue', sans-serif;
-  font-size: 18px;
-  color: #fff;
-  line-height: 1;
-  white-space: nowrap;
-}
-.leader-name-sm {
-  font-family: 'Inter Tight', sans-serif;
-  font-size: 12px;
+.extras-week-label {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 11px;
   font-weight: 700;
-  color: var(--ice, #9fc9dc);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  letter-spacing: 1.8px;
+  text-transform: uppercase;
+  color: var(--gold, #d8b35d);
+  margin: 10px 0 6px;
+}
+.extras-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: 'Barlow Condensed', sans-serif;
+}
+.extras-table thead th {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--muted, #9aaabc);
+  padding: 4px 8px 8px;
+  text-align: center;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.extras-table tbody td {
+  padding: 8px;
+  text-align: center;
+  font-size: 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.extras-table tbody tr:last-child td { border-bottom: none; }
+.extras-table tbody tr.extras-leader td { background: rgba(216,179,93,0.07); }
+.extras-entry-section {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 12px;
+  padding: 14px;
+}
+.extras-entry-title {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--gold, #d8b35d);
+  margin-bottom: 12px;
 }
