@@ -218,22 +218,10 @@ function buildScheduleFromSheet(data) {
     if (!week) return;
 
     const rowStatus = String(row.Status || '').toLowerCase();
-
     if (!byWeek[week]) {
-      byWeek[week] = {
-        week,
-        date: formatSheetDate(row.Date),
-        side: row.Side || '',
-        status: '',
-        matchups: []
-      };
+      byWeek[week] = { week, date: formatSheetDate(row.Date), side: row.Side || '', status: '', matchups: [] };
     }
-
-    // Promote completed status to week level
-    if (rowStatus === 'completed') {
-      byWeek[week].status = 'completed';
-    }
-
+    if (rowStatus === 'completed') { byWeek[week].status = 'completed'; }
     const home = normalizeTeamName(row['Team 1'] || row.Team1 || row.home || '');
     const away = normalizeTeamName(row['Team 2'] || row.Team2 || row.away || '');
 
@@ -241,7 +229,7 @@ function buildScheduleFromSheet(data) {
       time: row['Tee Time'] || row.TeeTime || '',
       home: home || 'TBD',
       away: away || 'TBD',
-      status: rowStatus,
+      status: row.Status || '',
       matchId: row.MatchID || ''
     });
   });
@@ -501,6 +489,7 @@ async function fetchLeagueDataFromSheets(silent = false) {
     const json = await leagueJsonpRequest('getLeagueData');
     applyLeagueDataFromSheet(json.data || {});
     rebuildAll();
+    buildScheduledMatchSelect();
 
     if (typeof initCommissionerNoteEditor === 'function') {
       initCommissionerNoteEditor();
@@ -2224,38 +2213,39 @@ function buildScorecardHTML(r) {
 function buildWeekCompletionManager() {
   var list = document.getElementById('week-completion-list');
   if (!list) return;
-  if (!SCHEDULE_WEEKS || !SCHEDULE_WEEKS.length) {
-    list.innerHTML = '<div class="dash-empty" style="padding:12px;text-align:center;">Loading schedule from Google Sheets...</div>';
+  if (!SCHEDULE_WEEKS || SCHEDULE_WEEKS.length <= 1) {
+    list.innerHTML = '<div style="padding:12px;text-align:center;color:#9aaabc;font-size:13px;">Loading schedule...</div>';
     fetchLeagueDataFromSheets(true).then(function() {
       buildWeekCompletionManager();
     }).catch(function() {
-      list.innerHTML = '<div class="dash-empty" style="padding:12px;color:var(--red);">Could not load schedule. Check your connection.</div>';
+      list.innerHTML = '<div style="padding:12px;color:#d66060;font-size:13px;">Could not load schedule.</div>';
     });
     return;
   }
   list.innerHTML = SCHEDULE_WEEKS.map(function(w) {
     var isComplete = w.status === 'completed';
     var info = getWeekCompletionInfo(w);
-    var autoComplete = info.isComplete;
-    var statusLabel = isComplete ? 'Completed' : (autoComplete ? 'All results in' : (info.completed + '/' + info.total + ' results entered'));
+    var statusLabel = isComplete ? 'Marked as completed' : (info.isComplete ? 'All results entered' : (info.completed + '/' + info.total + ' results entered'));
     var btnLabel = isComplete ? 'Mark as Upcoming' : 'Mark as Completed';
-    var btnBg = isComplete ? 'rgba(255,255,255,0.1)' : '#1a4a2a';
-    var btnColor = isComplete ? '#9aaabc' : '#7cc77a';
-    var statusColor = isComplete ? '#d8b35d' : (autoComplete ? '#7cc77a' : '#9aaabc');
-    var statusIcon = isComplete ? '\u2705 ' : (autoComplete ? '\ud83d\udfe2 ' : '\u23f3 ');
-    return '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;' +
+    var btnBg = isComplete ? 'rgba(255,255,255,0.08)' : '#1a4a2a';
+    var btnBorder = isComplete ? '#9aaabc' : '#7cc77a';
+    var btnTxt = isComplete ? '#9aaabc' : '#7cc77a';
+    var statusColor = isComplete ? '#d8b35d' : (info.isComplete ? '#7cc77a' : '#9aaabc');
+    return (
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;' +
       'background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);' +
       'border-radius:12px;padding:12px 14px;margin-bottom:8px;">' +
-      '<div>' +
-      '<div style="font-weight:800;font-size:13px;letter-spacing:1.5px;color:#f0f4f8;">WEEK ' + w.week + ' &nbsp;\u00b7&nbsp; ' + w.date + ' &nbsp;\u00b7&nbsp; ' + w.side + '</div>' +
-      '<div style="font-size:11px;color:' + statusColor + ';margin-top:3px;">' + statusIcon + statusLabel + '</div>' +
+      '<div style="min-width:0;">' +
+      '<div style="font-weight:800;font-size:13px;color:#f0f4f8;">Week ' + w.week + ' &middot; ' + w.date + ' &middot; ' + w.side + '</div>' +
+      '<div style="font-size:11px;color:' + statusColor + ';margin-top:3px;">' + statusLabel + '</div>' +
       '</div>' +
-      '<button onclick="toggleWeekCompletion(' + w.week + ',this,' + (isComplete ? 'false' : 'true') + ')" ' +
-      'style="background:' + btnBg + ';border:1px solid ' + btnColor + ';color:' + btnColor + ';' +
-      'font-size:12px;font-weight:700;letter-spacing:1px;' +
-      'padding:8px 14px;border-radius:999px;cursor:pointer;white-space:nowrap;">' +
+      '<button onclick="toggleWeekCompletion(' + w.week + ',this,' + (!isComplete) + ')" ' +
+      'style="background:' + btnBg + ';border:1px solid ' + btnBorder + ';color:' + btnTxt + ';' +
+      'font-size:11px;font-weight:700;padding:7px 12px;' +
+      'border-radius:999px;cursor:pointer;white-space:nowrap;flex-shrink:0;">' +
       btnLabel + '</button>' +
-      '</div>';
+      '</div>'
+    );
   }).join('');
 }
 
@@ -2263,16 +2253,15 @@ async function toggleWeekCompletion(weekNum, btn, markComplete) {
   var origText = btn.textContent;
   btn.textContent = 'Saving...';
   btn.disabled = true;
-  var newStatus = markComplete ? 'completed' : 'upcoming';
   try {
-    await postLeagueAction('setWeekStatus', { week: weekNum, status: newStatus });
+    await postLeagueAction('setWeekStatus', { week: weekNum, status: markComplete ? 'completed' : 'upcoming' });
     await fetchLeagueDataFromSheets(true);
     buildWeekCompletionManager();
-    buildScheduledMatchDropdown();
+    buildScheduledMatchSelect();
     rebuildAll();
   } catch (err) {
     btn.textContent = origText;
     btn.disabled = false;
-    alert('Could not update week status: ' + err.message);
+    alert('Could not update: ' + err.message);
   }
 }
