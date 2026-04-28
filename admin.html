@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hockey Guys Golf League Admin</title>
+<meta name="robots" content="noindex,nofollow">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Condensed:wght@400;600;700;900&family=Barlow:wght@400;500;600;700;800&family=Inter+Tight:wght@500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=4.3-fixed">
+<link rel="stylesheet" href="theme-polished.css?v=4.3-fixed">
+
+</head>
+<body>
+
+<div class="ticker-wrap">
+  <div class="ticker-label">LIVE &nbsp;·&nbsp; 2026</div>
+  <div class="ticker-track" id="ticker-track"></div>
+</div>
+<div class="hero">
+  <div class="hero-bg"></div><div class="hero-stripes"></div>
+  <div class="hero-inner">
+    <div class="hero-eyebrow"><span class="hero-puck">🏒</span> Official League Site <span class="hero-puck">⛳</span></div>
+    <div class="hero-title">The Hockey Guys<br><span>Golf League</span></div>
+    <div class="hero-sub"><b>Twin Hills Golf Course</b> &nbsp;·&nbsp; Spencerport, NY</div>
+    <div class="hero-pills">
+      <span class="pill">2-Man Best Ball</span><span class="pill">Match Play</span>
+      <span class="pill">9 Holes</span><span class="pill">2026 Season</span>
+    </div>
+  </div>
+</div>
+<div class="nav">
+  <a class="nav-btn nav-link-btn" href="index.html?v=4.3-fixed">← Public Site</a>
+  <button class="nav-btn active" onclick="show('dashboard',this)">Home</button>
+  <button class="nav-btn" onclick="show('standings',this)">Standings</button>
+  <button class="nav-btn" onclick="show('schedule',this)">Schedule</button>
+  <button class="nav-btn" onclick="show('results',this)">Results</button>
+  <button class="nav-btn" onclick="show('stats',this);buildStats()">Stats</button>
+  <button class="nav-btn" onclick="show('rules',this)">Rules</button>
+  <button class="nav-btn comm-btn" onclick="show('commissioner',this)">⚙ Scores</button>
+</div>
+
+<div class="content">
+  <div id="dashboard" class="section active">
+    <div class="section-header"><span class="section-label">League Dashboard</span><div class="section-header-line"></div></div>
+    <div id="dashboard-container"></div>
+  </div>
+
+  <div id="standings" class="section">
+    <div class="section-header"><span class="section-label">2026 Standings</span><div class="section-header-line"></div></div>
+    <div class="view-toggle">
+      <button class="view-btn active" onclick="setView('table',this)">&#9776; Table</button>
+      <button class="view-btn" onclick="setView('cards',this)">&#9638; Cards</button>
+    </div>
+    <div id="view-table">
+      <table class="standings-table">
+        <thead><tr><th style="width:36px">#</th><th style="text-align:left">Team</th><th style="width:48px">W</th><th style="width:48px">L</th><th style="width:52px">HW</th></tr></thead>
+        <tbody id="standings-body"></tbody>
+      </table>
+    </div>
+    <div id="view-cards" style="display:none"><div class="cards-grid" id="cards-grid"></div></div>
+  </div>
+
+  <div id="schedule" class="section">
+    <div class="section-header"><span class="section-label">Schedule</span><div class="section-header-line"></div></div>
+    <div id="schedule-container"></div>
+  </div>
+
+  <div id="results" class="section">
+    <div class="section-header"><span class="section-label">Results</span><div class="section-header-line"></div></div>
+    <div id="results-container">
+      <div class="no-results"><div class="no-results-icon">🏌️</div><div class="no-results-text">No results yet<br>Check back after Week 1</div></div>
+    </div>
+  </div>
+
+  <div id="stats" class="section">
+    <div class="section-header"><span class="section-label">Player Stats</span><div class="section-header-line"></div></div>
+
+    <!-- Stats Filter -->
+    <div class="stats-filter">
+      <button class="stats-filter-btn active" onclick="setStatFilter('all',this)">All Players</button>
+      <button class="stats-filter-btn" onclick="setStatFilter('leaders',this)">Leaders</button>
+    </div>
+
+    <!-- Season Leaders Banner -->
+    <div id="stats-leaders-banner" style="display:none"></div>
+
+    <!-- Player Stats Cards -->
+    <div id="stats-no-data" class="no-results">
+      <div class="no-results-icon">📊</div>
+      <div class="no-results-text">No stats yet<br>Enter Week 1 scores to see individual stats</div>
+    </div>
+    <div id="stats-container" style="display:none">
+
+      <!-- Season Leaders row -->
+      <div id="leaders-row" class="leaders-row"></div>
+
+      <!-- Filter toggle -->
+      <div id="player-search-wrap" style="margin-bottom:14px;display:none">
+        <input type="text" id="player-search" class="player-search-input" placeholder="Search player..." oninput="filterPlayerStats()">
+      </div>
+
+      <!-- All Players Grid -->
+      <div id="player-cards-container"></div>
+
+      <!-- Hole-by-Hole Breakdown -->
+      <div class="section-header" style="margin-top:24px">
+        <span class="section-label" style="font-size:16px">Hole Breakdown</span>
+        <div class="section-header-line"></div>
+      </div>
+      <p style="font-family:'Barlow Condensed',sans-serif;font-size:12px;color:var(--muted);margin-bottom:12px;letter-spacing:1px;">Average gross score per hole across all rounds played</p>
+      <div id="hole-breakdown-container"></div>
+
+    </div>
+  </div>
+
+
+  <div id="rules" class="section">
+    <div class="section-header"><span class="section-label">League Rules</span><div class="section-header-line"></div></div>
+    <div class="rules-grid">
+      <div class="rule-card"><div class="rule-title">Format</div><p>Weekly 2-man best ball match play. Each matchup is played over 9 holes.</p></div>
+      <div class="rule-card"><div class="rule-title">GHIN Handicaps</div><p>GHIN handicaps are mandatory. GHINs will be used for league handicapping throughout the season, so all players are expected to keep their GHIN updated and post scores after each round.</p></div>
+      <div class="rule-card rule-card-wide"><div class="rule-title">Playoff Format</div><p>All 8 teams make the playoffs. The opening round is seeded bracket-style with 1 vs. 8, 2 vs. 7, 3 vs. 6, and 4 vs. 5.</p><p>After each playoff round, teams are reseeded so the highest remaining seed plays the lowest remaining seed.</p><p>If teams are tied with the same record in the standings, the tiebreaker is total holes won for the season.</p></div>
+      <div class="rule-card rule-card-wide"><div class="rule-title">Tiebreakers</div><p>Playoff holes will no longer be used. For both the regular season and playoffs, ties will be broken using the following structure:</p><ol class="rule-list"><li>Combined net total</li><li>Net scores on the hardest holes, essentially skins</li><li>Most net birdies in the round</li><li>Most gross pars</li></ol></div>
+    </div>
+  </div>
+
+  <div id="commissioner" class="section">
+    <div class="section-header">
+      <span class="section-label" style="color:var(--gold)">Commissioner</span>
+      <div class="section-header-line" style="background:linear-gradient(90deg,rgba(245,197,24,0.4),transparent)"></div>
+    </div>
+    <div id="login-panel" class="login-wrap">
+      <div class="login-card">
+        <div class="login-icon">🏆</div>
+        <div class="login-title">Commissioners Only</div>
+        <div class="login-sub">Bobby Drexler &amp; Kyle Hiscock</div>
+        <input class="login-field" type="text" id="login-name" placeholder="Your name" autocomplete="off">
+        <input class="login-field" type="password" id="login-pass" placeholder="Password" autocomplete="off" onkeydown="if(event.key==='Enter')doLogin()">
+        <input class="login-field" type="password" id="admin-api-key" placeholder="Admin API key (optional)" autocomplete="off">
+        <button class="login-btn" onclick="doLogin()">🔐 Sign In</button>
+        <div class="login-error" id="login-error">❌ Invalid name or password</div>
+      </div>
+    </div>
+    <div id="commissioner-panel" class="commissioner-panel">
+      <div class="comm-header">
+        <div><div class="comm-title">Score Entry</div><div class="comm-user" id="comm-user"></div></div>
+        <button class="logout-btn" onclick="doLogout()">Sign Out</button>
+      </div>
+      <div class="comm-tabs">
+        <button class="comm-tab active" onclick="showCommTab('scorecard-tab',this)">📋 Scorecard</button>
+        <button class="comm-tab" onclick="showCommTab('manage-tab',this)">🗑 Manage</button>
+        <button class="comm-tab" onclick="showCommTab('note-tab',this)">📣 Note</button>
+      </div>
+
+      <div id="scorecard-tab">
+        <!-- Setup -->
+        <div class="entry-card">
+          <div class="entry-title">Match Setup</div>
+          <label class="field-label">Scheduled Match</label>
+          <select class="field-select" id="sc-scheduled-match" onchange="applyScheduledMatch()"></select>
+          <div class="two-col">
+            <div>
+              <label class="field-label">Week #</label>
+              <input class="field-input" type="number" id="sc-week" placeholder="1" min="1" max="20" style="margin-bottom:0">
+            </div>
+            <div>
+              <label class="field-label">Side</label>
+              <select class="field-select" id="sc-side" style="margin-bottom:0" onchange="renderScorecard()">
+                <option value="front">Front 9 (Holes 1–9)</option>
+                <option value="back">Back 9 (Holes 10–18)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Team 1 -->
+        <div class="entry-card">
+          <div class="entry-title" style="color:var(--green)">Team 1</div>
+          <div>
+            <label class="field-label">Team Name</label>
+            <select class="field-select" id="sc-team1"></select>
+          </div>
+          <div class="two-col">
+            <div><label class="field-label">Player A</label><input class="field-input" list="roster-options" type="text" id="p1a-name" placeholder="Name" oninput="renderScorecard()"></div>
+            <div><label class="field-label">GHIN Index</label><input class="field-input" type="number" id="p1a-ghin" placeholder="e.g. 14.2" step="0.1" min="0" max="54" oninput="renderScorecard()"></div>
+          </div>
+          <div class="two-col">
+            <div><label class="field-label">Player B</label><input class="field-input" list="roster-options" type="text" id="p1b-name" placeholder="Name" oninput="renderScorecard()"></div>
+            <div><label class="field-label">GHIN Index</label><input class="field-input" type="number" id="p1b-ghin" placeholder="e.g. 20.0" step="0.1" min="0" max="54" oninput="renderScorecard()"></div>
+          </div>
+        </div>
+
+        <!-- Team 2 -->
+        <div class="entry-card">
+          <div class="entry-title" style="color:var(--ice)">Team 2</div>
+          <div>
+            <label class="field-label">Team Name</label>
+            <select class="field-select" id="sc-team2"></select>
+          </div>
+          <div class="two-col">
+            <div><label class="field-label">Player A</label><input class="field-input" list="roster-options" type="text" id="p2a-name" placeholder="Name" oninput="renderScorecard()"></div>
+            <div><label class="field-label">GHIN Index</label><input class="field-input" type="number" id="p2a-ghin" placeholder="e.g. 8.5" step="0.1" min="0" max="54" oninput="renderScorecard()"></div>
+          </div>
+          <div class="two-col">
+            <div><label class="field-label">Player B</label><input class="field-input" list="roster-options" type="text" id="p2b-name" placeholder="Name" oninput="renderScorecard()"></div>
+            <div><label class="field-label">GHIN Index</label><input class="field-input" type="number" id="p2b-ghin" placeholder="e.g. 12.0" step="0.1" min="0" max="54" oninput="renderScorecard()"></div>
+          </div>
+        </div>
+
+        <!-- Live Scorecard -->
+        <div class="entry-card" id="scorecard-card" style="display:none">
+          <div class="entry-title">⛳ Live Scorecard
+            <span style="font-family:'Barlow Condensed',sans-serif;font-size:11px;color:var(--muted);font-weight:400;letter-spacing:1px;margin-left:8px;">★ = stroke hole</span>
+          </div>
+          <div class="scorecard-wrap"><table class="scorecard" id="live-scorecard"></table></div>
+        </div>
+
+        <!-- Save Bar — always visible once scorecard shown -->
+        <div class="save-bar" id="save-bar" style="display:none">
+          <div class="save-bar-title">Match Result</div>
+          <div class="match-status-display" id="status-display">—</div>
+          <div class="match-winner-display" id="winner-display"></div>
+          <button class="submit-btn" onclick="saveMatch()">✅ Save Match Result</button>
+          <div class="success-msg" id="sc-success">✅ Match saved! Standings updated.</div>
+        </div>
+      </div>
+
+
+      <div id="note-tab" style="display:none">
+        <div class="entry-card">
+          <div class="entry-title">📣 Commissioner Note</div>
+          <p style="font-family:'Barlow Condensed',sans-serif;font-size:13px;color:var(--muted);margin-bottom:14px;">
+            Update the note that appears at the top of the public home page. This version saves the note to Google Sheets so everyone sees the same update.
+          </p>
+          <label class="field-label">Homepage Note</label>
+          <textarea class="field-input" id="commissioner-note-field" rows="5" placeholder="Enter league update..." style="min-height:120px;resize:vertical;line-height:1.45;"></textarea>
+          <div class="two-col manage-actions">
+            <button class="submit-btn" onclick="saveCommissionerNote()">✅ Save Note</button>
+            <button class="submit-btn danger-btn" onclick="clearCommissionerNote()">Reset Note</button>
+          </div>
+          <div class="success-msg" id="commissioner-note-success" style="display:none"></div>
+        </div>
+      </div>
+
+      <div id="manage-tab" style="display:none">
+        <div class="entry-card">
+          <div class="entry-title">💾 Data Backup</div>
+          <p style="font-family:'Barlow Condensed',sans-serif;font-size:13px;color:var(--muted);margin-bottom:14px;">Export a backup after entering scores. Import restores standings, results, and player stats on this browser.</p>
+          <div class="two-col manage-actions">
+            <button class="submit-btn" onclick="exportLeagueData()">⬇ Export Backup</button>
+            <label class="import-btn">⬆ Import Backup<input type="file" accept="application/json" onchange="importLeagueData(event)"></label>
+          </div>
+        </div>
+
+        <div class="entry-card">
+          <div class="entry-title">✏️ Edit / Remove Saved Result</div>
+          <p style="font-family:'Barlow Condensed',sans-serif;font-size:13px;color:var(--muted);margin-bottom:14px;">Load a saved result back into the scorecard, or remove a specific result without touching the rest of the season.</p>
+          <label class="field-label">Saved Results</label>
+          <select class="field-select" id="edit-result-select"></select>
+          <div class="two-col manage-actions">
+            <button class="submit-btn" onclick="loadSelectedResultForEdit()">Load to Edit</button>
+            <button class="submit-btn danger-btn" onclick="deleteSelectedResult()">Remove Selected</button>
+          </div>
+        </div>
+        <div class="entry-card" style="border-color:rgba(230,57,70,0.2)">
+          <div class="entry-title" style="color:var(--red)">🗑 Remove Last Result</div>
+          <p style="font-family:'Barlow Condensed',sans-serif;font-size:13px;color:var(--muted);margin-bottom:14px;">Removes the most recently saved match and reverses the W/L records.</p>
+          <button class="submit-btn danger-btn" onclick="removeLastResult()">Remove Last Entry</button>
+        </div>
+        <div class="entry-card" style="border-color:rgba(230,57,70,0.2)">
+          <div class="entry-title" style="color:var(--red)">⚠ Reset Season Data</div>
+          <p style="font-family:'Barlow Condensed',sans-serif;font-size:13px;color:var(--muted);margin-bottom:14px;">Clears all saved results and resets records to 0-0. Export a backup first.</p>
+          <button class="submit-btn danger-btn" onclick="resetSeasonData()">Reset Season</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<datalist id="roster-options"></datalist>
+
+<div class="footer">Hockey Guys Golf League &nbsp;·&nbsp; 2026 Season &nbsp;·&nbsp; Twin Hills · Spencerport NY</div>
+
+<script src="admin.js?v=4.3-fixed"></script>
+<script src="polish.js?v=4.3-fixed"></script>
+
+</body>
+</html>
