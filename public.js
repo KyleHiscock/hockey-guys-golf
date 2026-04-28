@@ -77,10 +77,10 @@ let scorecardScores = {};  // "pid_hole" -> gross score string
 // Where Par9 is the par for that specific 9 (front=36, back=35)
 function nineHoleHdcp(ghinIndex, side) {
   const idx = parseFloat(ghinIndex);
-  if (isNaN(idx)) return null;
+  if (isNaN(idx) || ghinIndex === '' || ghinIndex === null || ghinIndex === undefined) return null;
   const par9 = side === 'front' ? COURSE.parFront : COURSE.parBack;
   const raw = (idx * (COURSE.slope / 113) / 2) + (COURSE.rating / 2 - par9);
-  // Round normally, but 0.5 rounds up per USGA
+  // Round normally, 0.5 rounds up per USGA. Negative = plus handicap (gives strokes).
   return Math.floor(raw + 0.5);
 }
 
@@ -106,7 +106,11 @@ function calcPlayerStrokes(players, side, useNinetyPct) {
 function getStrokeHoles(numStrokes, holes) {
   const sorted = [...holes].sort((a,b) => a.hcp - b.hcp);
   const set = new Set();
-  for(let i = 0; i < Math.min(numStrokes, 9); i++) set.add(sorted[i].hole);
+  if (numStrokes > 0) {
+    // Receives strokes on hardest holes
+    for(let i = 0; i < Math.min(numStrokes, 9); i++) set.add(sorted[i].hole);
+  }
+  // Negative strokes (plus handicap) = gives strokes; handled at net calculation level
   return set;
 }
 
@@ -1734,8 +1738,8 @@ function computePlayerStats() {
 
       var scoreSnapshot = result.scoreSnapshot || {};
       // Full individual course handicap for stats (not relative to lowest)
-      var fullHdcp = nineHoleHdcp(parseFloat(p.ghin || 0), side) || 0;
-      var fullStrokeHoles = getStrokeHoles(fullHdcp, holes);
+      var fullHdcp = (p.ghin && p.ghin !== '') ? (nineHoleHdcp(p.ghin, side) || 0) : null;
+      var fullStrokeHoles = fullHdcp !== null ? getStrokeHoles(fullHdcp, holes) : new Set();
       var grossTotal=0, holeCount=0;
       holes.forEach(function(h) {
         var gross = getScoreForPlayerHole(scoreSnapshot, p, playerIndex, h.hole);
@@ -1745,7 +1749,7 @@ function computePlayerStats() {
         ps.totalGross += gross;
         ps.totalHoles++;
         // Net score uses full individual handicap
-        var net = gross - (fullStrokeHoles.has(h.hole) ? 1 : 0);
+        var net = fullHdcp !== null && fullHdcp < 0 ? gross : gross - (fullStrokeHoles.has(h.hole) ? 1 : 0);
         ps.totalNet = (ps.totalNet || 0) + net;
         ps.parDiffs.push(gross - h.par);
         var diff = gross - h.par;
@@ -1763,11 +1767,17 @@ function computePlayerStats() {
         ps.roundsPlayed++;
         if(grossTotal < ps.bestGross) ps.bestGross = grossTotal;
         if(grossTotal > ps.worstGross) ps.worstGross = grossTotal;
-        // Track best/worst net round using full individual handicap
-        var fullHdcpRound = nineHoleHdcp(parseFloat(p.ghin || 0), side) || 0;
-        var netTotal = grossTotal - fullHdcpRound;
-        if(ps.bestNet === undefined || netTotal < ps.bestNet) ps.bestNet = netTotal;
-        if(ps.worstNet === undefined || netTotal > ps.worstNet) ps.worstNet = netTotal;
+        // Best/worst net round — sum net scores hole-by-hole (same strokes as totalNet)
+        var roundNet = 0;
+        holes.forEach(function(h) {
+          var key = p.id + '_' + h.hole;
+          var raw = scoreSnapshot[key];
+          var g = (raw !== undefined && raw !== null && raw !== '') ? parseInt(raw) : null;
+          if(g === null || isNaN(g)) return;
+          roundNet += g - (fullStrokeHoles.has(h.hole) ? 1 : 0);
+        });
+        if(ps.bestNet === undefined || roundNet < ps.bestNet) ps.bestNet = roundNet;
+        if(ps.worstNet === undefined || roundNet > ps.worstNet) ps.worstNet = roundNet;
       }
     });
   });

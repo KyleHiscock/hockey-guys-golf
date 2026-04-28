@@ -153,7 +153,6 @@
         <button class="comm-tab active" onclick="showCommTab('scorecard-tab',this)">📋 Scorecard</button>
         <button class="comm-tab" onclick="showCommTab('manage-tab',this)">🗑 Manage</button>
         <button class="comm-tab" onclick="showCommTab('note-tab',this)">📣 Note</button>
-        <button class="comm-tab" onclick="showCommTab('schedule-tab',this);buildWeekCompletionManager()">📅 Schedule</button>
       </div>
 
       <div id="scorecard-tab">
@@ -186,11 +185,11 @@
           </div>
           <div class="two-col">
             <div><label class="field-label">Player A</label><input class="field-input" list="roster-options" type="text" id="p1a-name" placeholder="Name" oninput="renderScorecard()"></div>
-            <div><label class="field-label">GHIN Index</label><input class="field-input" type="number" id="p1a-ghin" placeholder="e.g. 14.2" step="0.1" min="0" max="54" oninput="renderScorecard()"></div>
+            <div><label class="field-label">GHIN Index</label><input class="field-input" type="number" id="p1a-ghin" placeholder="e.g. 14.2" step="0.1" min="-10" max="54" oninput="renderScorecard()"></div>
           </div>
           <div class="two-col">
             <div><label class="field-label">Player B</label><input class="field-input" list="roster-options" type="text" id="p1b-name" placeholder="Name" oninput="renderScorecard()"></div>
-            <div><label class="field-label">GHIN Index</label><input class="field-input" type="number" id="p1b-ghin" placeholder="e.g. 20.0" step="0.1" min="0" max="54" oninput="renderScorecard()"></div>
+            <div><label class="field-label">GHIN Index</label><input class="field-input" type="number" id="p1b-ghin" placeholder="e.g. 20.0" step="0.1" min="-10" max="54" oninput="renderScorecard()"></div>
           </div>
         </div>
 
@@ -203,11 +202,11 @@
           </div>
           <div class="two-col">
             <div><label class="field-label">Player A</label><input class="field-input" list="roster-options" type="text" id="p2a-name" placeholder="Name" oninput="renderScorecard()"></div>
-            <div><label class="field-label">GHIN Index</label><input class="field-input" type="number" id="p2a-ghin" placeholder="e.g. 8.5" step="0.1" min="0" max="54" oninput="renderScorecard()"></div>
+            <div><label class="field-label">GHIN Index</label><input class="field-input" type="number" id="p2a-ghin" placeholder="e.g. 8.5" step="0.1" min="-10" max="54" oninput="renderScorecard()"></div>
           </div>
           <div class="two-col">
             <div><label class="field-label">Player B</label><input class="field-input" list="roster-options" type="text" id="p2b-name" placeholder="Name" oninput="renderScorecard()"></div>
-            <div><label class="field-label">GHIN Index</label><input class="field-input" type="number" id="p2b-ghin" placeholder="e.g. 12.0" step="0.1" min="0" max="54" oninput="renderScorecard()"></div>
+            <div><label class="field-label">GHIN Index</label><input class="field-input" type="number" id="p2b-ghin" placeholder="e.g. 12.0" step="0.1" min="-10" max="54" oninput="renderScorecard()"></div>
           </div>
         </div>
 
@@ -246,12 +245,6 @@
         </div>
       </div>
 
-      <div id="schedule-tab" style="display:none">
-        <div style="margin-bottom:14px;">
-          <div class="entry-label" style="margin-bottom:8px;">Mark weeks as complete to hide them from the public Schedule tab.</div>
-          <div id="week-completion-list"></div>
-        </div>
-      </div>
       <div id="manage-tab" style="display:none">
         <div class="entry-card">
           <div class="entry-title">💾 Data Backup</div>
