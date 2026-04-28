@@ -384,3 +384,90 @@ body{font-family:'Barlow',sans-serif;background:var(--dark);color:var(--text);mi
   display: inline-block;
 }
 .lr-dot.active { background: var(--gold, #d8b35d); }
+
+/* ── V4.6 result summaries, completed schedule, latest-results scroller ── */
+.player-score-summary{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+  margin:8px 0 4px;
+  padding:8px;
+  border:1px solid rgba(255,255,255,0.08);
+  border-radius:12px;
+  background:rgba(255,255,255,0.025);
+}
+.player-score-pill{
+  display:flex;
+  justify-content:space-between;
+  gap:8px;
+  padding:5px 7px;
+  border-radius:9px;
+  background:rgba(0,0,0,0.18);
+  font-family:'Inter Tight','Barlow',sans-serif;
+  font-size:11px;
+  line-height:1.2;
+  margin-bottom:4px;
+}
+.player-score-pill:last-child{margin-bottom:0;}
+.player-score-name{font-weight:800;color:var(--text);}
+.player-score-values{color:var(--muted);font-weight:650;white-space:nowrap;}
+.results-week-status{
+  margin-left:auto;
+  margin-right:10px;
+  color:var(--muted);
+  font-family:'Barlow Condensed',sans-serif;
+  font-size:11px;
+  font-weight:700;
+  letter-spacing:1px;
+  text-transform:uppercase;
+}
+.completed-match{opacity:.58;filter:saturate(.55);}
+.completed-match .vs-badge{background:rgba(216,179,93,.16);color:var(--gold);border-color:rgba(216,179,93,.28);font-size:10px;letter-spacing:1px;}
+.latest-results-card{overflow:hidden;}
+.latest-player-totals{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:4px 8px;
+  margin-top:8px;
+  font-size:10.5px;
+  line-height:1.25;
+  color:var(--muted);
+  font-family:'Inter Tight','Barlow',sans-serif;
+}
+.latest-player-totals span{display:block;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.latest-player-totals b{color:var(--text);font-weight:800;}
+.latest-results-strip{
+  display:flex;
+  gap:7px;
+  overflow-x:auto;
+  -webkit-overflow-scrolling:touch;
+  padding:9px 1px 2px;
+  margin-top:6px;
+  scrollbar-width:thin;
+}
+.latest-result-chip{
+  flex:0 0 auto;
+  min-width:150px;
+  max-width:190px;
+  text-align:left;
+  padding:7px 9px;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,0.1);
+  background:rgba(0,0,0,0.18);
+  color:var(--text);
+  cursor:pointer;
+  transition:all .16s ease;
+  font-family:'Inter Tight','Barlow',sans-serif;
+}
+.latest-result-chip.active{border-color:rgba(216,179,93,.5);background:rgba(216,179,93,.12);}
+.latest-chip-score{display:block;color:var(--gold);font-weight:900;font-size:12px;line-height:1.1;}
+.latest-chip-teams{display:block;color:var(--text);font-size:10.5px;line-height:1.15;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.latest-chip-winner{display:block;color:var(--muted);font-size:9.5px;line-height:1.1;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+@media(max-width:640px){
+  .player-score-summary{grid-template-columns:1fr;}
+  .player-score-pill{font-size:10.5px;}
+  .results-week-header-row{gap:6px;align-items:flex-start;}
+  .results-week-status{display:block;margin:2px 0 0;font-size:10px;}
+  .latest-player-totals{grid-template-columns:1fr;}
+  .latest-result-chip{min-width:142px;}
+}

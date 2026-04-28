@@ -51,3 +51,13 @@ Recommended test:
 4. Confirm the Results tab now has P1/P2/P3/P4 player columns and hole scores.
 5. Confirm Player Stats show each player as one result only.
 6. Delete the dummy result from Admin > Manage.
+
+## V4.6 Results + Schedule Display Update
+
+- Public/admin result cards now show each player gross and net total for the posted 9-hole match.
+- Full scorecards remain expandable under each result.
+- Schedule weeks automatically disappear from upcoming schedule once all scheduled matchups for that week have posted results.
+- Completed result weeks collapse into clickable weekly summary bars. In-progress weeks stay open.
+- Home page Latest Results card rotates through latest week posted match results and includes a horizontal scrolling chip list.
+
+No Apps Script redeploy is required for this display update if you are already using the V4.5 Code.gs.

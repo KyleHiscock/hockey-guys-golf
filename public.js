@@ -698,28 +698,31 @@ function buildDashboard() {
   if(!container) return;
   const sorted = getSortedStandings();
   const leader = sorted[0];
-  const nextWeek = SCHEDULE_WEEKS.find(w => !RESULTS.some(r => parseInt(r.week) === w.week)) || SCHEDULE_WEEKS[SCHEDULE_WEEKS.length-1];
-  const lastResult = RESULTS[RESULTS.length-1];
+  const nextWeek = getNextIncompleteWeek();
+  const latestInfo = getLatestResultsInfo();
+  const firstLatest = latestInfo.results[0] || null;
   const miniRows = sorted.slice(0,4).map((t,i)=>`<div class="mini-standings-row">
     <div class="mini-rank">${i+1}</div>
     <div class="mini-team">${logoImg(t.name,'mini-logo','m-placeholder')}<div class="mini-team-name">${t.name}</div></div>
     <div class="mini-record">${t.w}-${t.l}<span class="mini-hw">${t.holesWon || 0} HW</span></div>
   </div>`).join('');
-  const nextHtml = nextWeek ? nextWeek.matchups.map(m=>`<div class="matchup-card">
-    <span class="m-time">${m.time}</span>
-    <div class="m-team right"><span class="m-name">${m.home}</span>${logoImg(m.home,'m-logo','m-placeholder')}</div>
-    <div class="vs-badge">VS</div>
-    <div class="m-team">${logoImg(m.away,'m-logo','m-placeholder')}<span class="m-name">${m.away}</span></div>
-  </div>`).join('') : '<div class="dash-empty">Schedule coming soon.</div>';
+
+  const nextHtml = nextWeek ? nextWeek.matchups
+    .filter(function(m){ return !isScheduledMatchCompleted(nextWeek.week, m); })
+    .map(m=>`<div class="matchup-card">
+      <span class="m-time">${m.time}</span>
+      <div class="m-team right"><span class="m-name">${m.home}</span>${logoImg(m.home,'m-logo','m-placeholder')}</div>
+      <div class="vs-badge">VS</div>
+      <div class="m-team">${logoImg(m.away,'m-logo','m-placeholder')}<span class="m-name">${m.away}</span></div>
+    </div>`).join('') : '<div class="dash-empty">Regular season schedule complete. See Results for match outcomes.</div>';
 
   const noteText = (localStorage.getItem("hggl2026_commissioner_note") || "Week 1 starts Tuesday, May 5th. Please arrive early, check in with your group, and make sure GHIN scores are posted after the round.").trim();
-  const safeNote = String(noteText)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/\"/g, "&quot;")
-    .replace(/'/g, "&#039;")
-    .replace(/\n/g, "<br>");
+  const safeNote = escapeLeagueHtml(noteText).replace(/\n/g, '<br>');
+  const latestLabel = latestInfo.week ? 'Latest Results · Week ' + latestInfo.week : 'Latest Results';
+  const latestSub = firstLatest ? firstLatest.team1 + ' vs ' + firstLatest.team2 : 'Check back after Week 1';
+  const latestScore = firstLatest ? firstLatest.matchResult : 'TBD';
+  const latestPlayers = firstLatest ? renderLatestPlayerTotals(firstLatest) : '';
+  const latestStrip = latestInfo.results.length ? renderLatestResultsStrip(latestInfo.results, 0) : '';
 
   container.innerHTML = `
     <div class="dashboard-panel update-card">
@@ -731,10 +734,17 @@ function buildDashboard() {
     </div>
     <div class="dashboard-grid dashboard-grid-two">
       <div class="dash-card"><div class="dash-label">Current #1 Seed</div><div class="dash-value">${leader ? leader.name : 'TBD'}</div><div class="dash-sub">${leader ? `${leader.w}-${leader.l} · ${leader.holesWon || 0} holes won` : 'No matches yet'}</div></div>
-      <div class="dash-card ice" id="latest-result-card"><div class="dash-label">Latest Results</div><div id="lr-score" class="dash-value">${lastResult ? lastResult.matchResult : 'TBD'}</div><div id="lr-teams" class="dash-sub">${lastResult ? lastResult.team1+' vs '+lastResult.team2 : 'Check back after Week 1'}</div><div id="lr-dots" class="lr-dots"></div></div>
+      <div class="dash-card ice latest-results-card" id="latest-result-card">
+        <div class="dash-label" id="lr-label">${latestLabel}</div>
+        <div id="lr-score" class="dash-value">${latestScore}</div>
+        <div id="lr-teams" class="dash-sub">${latestSub}</div>
+        <div id="lr-player-totals">${latestPlayers}</div>
+        <div id="lr-scroll" class="latest-results-strip">${latestStrip}</div>
+        <div id="lr-dots" class="lr-dots"></div>
+      </div>
     </div>
     <div class="dashboard-two">
-      <div class="dashboard-panel"><div class="panel-title">Next Up · Week ${nextWeek ? nextWeek.week : 'TBD'}</div>${nextHtml}</div>
+      <div class="dashboard-panel"><div class="panel-title">Next Up${nextWeek ? ' · Week ' + nextWeek.week : ''}</div>${nextHtml || '<div class="dash-empty">This week is complete. See Results for match outcomes.</div>'}</div>
       <div class="dashboard-panel"><div class="panel-title">Top Standings</div>${miniRows || '<div class="dash-empty">No standings yet.</div>'}</div>
     </div>
     <div class="dashboard-panel playoff-dashboard"><div class="panel-title">If Playoffs Started Today</div><div class="dash-empty" style="margin-bottom:10px">Opening-round matchups based on current standings. If teams have the same record, total holes won is the standings tiebreaker. Teams reseed after each round.</div><div id="playoff-picture-container"></div></div>`;
@@ -743,44 +753,75 @@ function buildDashboard() {
 }
 
 var _lrTimer = null;
+var _lrIndex = 0;
+function getLatestResultsInfo() {
+  if (!RESULTS.length) return { week: null, results: [] };
+  const weeks = RESULTS.map(function(r){ return parseInt(r.week, 10) || 0; }).filter(Boolean);
+  if (!weeks.length) return { week: null, results: [] };
+  const latestWeek = Math.max.apply(null, weeks);
+  const results = RESULTS.filter(function(r){ return parseInt(r.week, 10) === latestWeek; });
+  return { week: latestWeek, results: results };
+}
+
+function renderLatestResultsStrip(results, activeIndex) {
+  return results.map(function(r, i){
+    const winnerName = r.winner || '';
+    const shortScore = escapeLeagueHtml(r.matchResult || 'Final');
+    const label = escapeLeagueHtml((r.team1 || '') + ' vs ' + (r.team2 || ''));
+    return '<button class="latest-result-chip' + (i === activeIndex ? ' active' : '') + '" onclick="jumpLr(' + i + ')">' +
+      '<span class="latest-chip-score">' + shortScore + '</span>' +
+      '<span class="latest-chip-teams">' + label + '</span>' +
+      (winnerName ? '<span class="latest-chip-winner">Winner: ' + escapeLeagueHtml(winnerName) + '</span>' : '') +
+    '</button>';
+  }).join('');
+}
+
+function renderLatestPlayerTotals(result) {
+  const totals = getResultPlayerTotals(result).filter(function(p){ return p.hasScores; });
+  if (!totals.length) return '';
+  return '<div class="latest-player-totals">' + totals.map(function(p){
+    return '<span><b>' + escapeLeagueHtml(p.name) + '</b> ' + p.gross + ' gross / ' + p.net + ' net</span>';
+  }).join('') + '</div>';
+}
+
+function showLatestResult(results, index) {
+  if (!results.length) return;
+  _lrIndex = ((index % results.length) + results.length) % results.length;
+  const r = results[_lrIndex];
+  const score = document.getElementById('lr-score');
+  const teams = document.getElementById('lr-teams');
+  const totals = document.getElementById('lr-player-totals');
+  const strip = document.getElementById('lr-scroll');
+  const dots = document.getElementById('lr-dots');
+  if(score) score.textContent = r.matchResult || 'Final';
+  if(teams) teams.textContent = (r.team1 || '') + ' vs ' + (r.team2 || '');
+  if(totals) totals.innerHTML = renderLatestPlayerTotals(r);
+  if(strip) strip.innerHTML = renderLatestResultsStrip(results, _lrIndex);
+  if(dots) dots.querySelectorAll('.lr-dot').forEach(function(d,di){ d.classList.toggle('active',di===_lrIndex); });
+}
+
 function initLatestResultCarousel() {
   clearInterval(_lrTimer);
-  if (!RESULTS.length) return;
-  var latestWeek = Math.max.apply(null, RESULTS.map(function(r){ return parseInt(r.week)||0; }));
-  var weekResults = RESULTS.filter(function(r){ return parseInt(r.week)===latestWeek; });
-  if (weekResults.length <= 1) return;
-  var dotsEl = document.getElementById('lr-dots');
-  if (!dotsEl) return;
-  dotsEl.innerHTML = weekResults.map(function(_,i){
+  const info = getLatestResultsInfo();
+  const results = info.results;
+  const dotsEl = document.getElementById('lr-dots');
+  if (!results.length || !dotsEl) return;
+  dotsEl.innerHTML = results.map(function(_,i){
     return '<span class="lr-dot'+(i===0?' active':'')+'" onclick="jumpLr('+i+')"></span>';
   }).join('');
-  var curIdx = 0;
-  function showLr(i) {
-    var r = weekResults[i];
-    var s = document.getElementById('lr-score');
-    var t = document.getElementById('lr-teams');
-    if(s) s.textContent = r.matchResult;
-    if(t) t.textContent = r.team1 + ' vs ' + r.team2;
-    dotsEl.querySelectorAll('.lr-dot').forEach(function(d,di){ d.classList.toggle('active',di===i); });
-    curIdx = i;
-  }
-  _lrTimer = setInterval(function(){
-    showLr((curIdx+1) % weekResults.length);
-  }, 3000);
+  showLatestResult(results, 0);
+  if (results.length <= 1) return;
+  _lrTimer = setInterval(function(){ showLatestResult(results, _lrIndex + 1); }, 3500);
 }
+
 function jumpLr(i) {
   clearInterval(_lrTimer);
-  var latestWeek = Math.max.apply(null, RESULTS.map(function(r){ return parseInt(r.week)||0; }));
-  var weekResults = RESULTS.filter(function(r){ return parseInt(r.week)===latestWeek; });
-  var r = weekResults[i];
-  var s = document.getElementById('lr-score');
-  var t = document.getElementById('lr-teams');
-  if(s) s.textContent = r.matchResult;
-  if(t) t.textContent = r.team1 + ' vs ' + r.team2;
-  document.querySelectorAll('.lr-dot').forEach(function(d,di){ d.classList.toggle('active',di===i); });
-  _lrTimer = setInterval(function(){
-    jumpLr((i+1) % weekResults.length);
-  }, 3000);
+  const info = getLatestResultsInfo();
+  const results = info.results;
+  showLatestResult(results, i);
+  if (results.length > 1) {
+    _lrTimer = setInterval(function(){ showLatestResult(results, _lrIndex + 1); }, 3500);
+  }
 }
 
 function getSortedStandings() {
@@ -818,6 +859,98 @@ function buildPlayoffPicture() {
   }).join('');
 }
 
+function escapeLeagueHtml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function scheduledMatchKey(week, teamA, teamB) {
+  const teams = [normalizeTeamName(teamA), normalizeTeamName(teamB)]
+    .map(function(t){ return String(t || '').trim().toLowerCase(); })
+    .filter(Boolean)
+    .sort();
+  return String(parseInt(week, 10) || week) + '|' + teams.join('|');
+}
+
+function getCompletedScheduleMatchKeys() {
+  const keys = new Set();
+  RESULTS.forEach(function(r){
+    if (!r || !r.week || !r.team1 || !r.team2) return;
+    keys.add(scheduledMatchKey(r.week, r.team1, r.team2));
+  });
+  return keys;
+}
+
+function isScheduledMatchCompleted(week, matchup) {
+  return getCompletedScheduleMatchKeys().has(scheduledMatchKey(week, matchup.home, matchup.away));
+}
+
+function getWeekCompletionInfo(weekObj) {
+  const keys = getCompletedScheduleMatchKeys();
+  const total = weekObj && weekObj.matchups ? weekObj.matchups.length : 0;
+  const completed = weekObj && weekObj.matchups ? weekObj.matchups.filter(function(m){ return keys.has(scheduledMatchKey(weekObj.week, m.home, m.away)); }).length : 0;
+  return { total: total, completed: completed, isComplete: total > 0 && completed >= total };
+}
+
+function getNextIncompleteWeek() {
+  return SCHEDULE_WEEKS.find(function(w){ return !getWeekCompletionInfo(w).isComplete; }) || null;
+}
+
+function getResultSnapshotPlayers(r) {
+  var snap = Array.isArray(r.playersSnapshot) ? r.playersSnapshot : [];
+  if (snap.length >= 4) return snap.slice(0, 4).map(function(p, i){ return normalizeSnapshotPlayer(p, i, { Team1:r.team1, Team2:r.team2 }); });
+  const parsedNames = parsePlayerLinePlayers(r.playerLine);
+  return parsedNames.map(function(name, i) {
+    return normalizeSnapshotPlayer({ id:['p1a','p1b','p2a','p2b'][i], name:name || ('Player ' + (i + 1)), team:i < 2 ? r.team1 : r.team2 }, i, { Team1:r.team1, Team2:r.team2 });
+  });
+}
+
+function getResultPlayerTotals(r) {
+  const snap = getResultSnapshotPlayers(r);
+  const scores = r.scoreSnapshot || {};
+  if (!Object.keys(scores).length || snap.length < 4) return [];
+  const side = r.side === 'Front 9' ? 'front' : 'back';
+  const holes = side === 'front' ? COURSE.front : COURSE.back;
+  const strokes = calcPlayerStrokes(snap, side);
+  const strokeSets = snap.map(function(p, i) { return getStrokeHoles(strokes[i], holes); });
+  return snap.map(function(p, pi) {
+    let gross = 0, net = 0, holeCount = 0;
+    holes.forEach(function(h) {
+      const g = getScoreForPlayerHole(scores, p, pi, h.hole);
+      if (g === null || isNaN(g)) return;
+      gross += g;
+      net += g - (strokeSets[pi].has(h.hole) ? 1 : 0);
+      holeCount++;
+    });
+    return {
+      name: p.name || ('Player ' + (pi + 1)),
+      team: p.team || (pi < 2 ? r.team1 : r.team2),
+      gross: holeCount ? gross : '—',
+      net: holeCount ? net : '—',
+      holes: holeCount,
+      hasScores: holeCount > 0
+    };
+  });
+}
+
+function renderPlayerScoreSummary(result) {
+  const totals = getResultPlayerTotals(result).filter(function(p){ return p.hasScores; });
+  if (!totals.length) return '';
+  const team1 = totals.filter(function(p, i){ return i < 2; });
+  const team2 = totals.filter(function(p, i){ return i >= 2; });
+  function sideHtml(players) {
+    return players.map(function(p){
+      return '<div class="player-score-pill"><span class="player-score-name">' + escapeLeagueHtml(p.name) + '</span><span class="player-score-values">Gross ' + p.gross + ' · Net ' + p.net + '</span></div>';
+    }).join('');
+  }
+  return '<div class="player-score-summary"><div>' + sideHtml(team1) + '</div><div>' + sideHtml(team2) + '</div></div>';
+}
+
+
 // ── RESULTS ──
 function buildResults() {
   const container = document.getElementById('results-container');
@@ -827,46 +960,50 @@ function buildResults() {
   }
   const byWeek = {};
   RESULTS.forEach(function(r){ if(!byWeek[r.week]) byWeek[r.week]=[]; byWeek[r.week].push(r); });
-  const sortedWeeks = Object.keys(byWeek).sort(function(a,b){return b-a;});
-  const latestWeek = sortedWeeks[0];
+  const sortedWeeks = Object.keys(byWeek).sort(function(a,b){return Number(b)-Number(a);});
   container.innerHTML = sortedWeeks.map(function(week) {
-    const isLatest = week === latestWeek;
     const weekData = byWeek[week];
     const weekInfo = SCHEDULE_WEEKS.find(function(w){ return String(w.week)===String(week); });
     const weekDate = weekInfo ? weekInfo.date : '';
     const weekSide = weekInfo ? weekInfo.side : '';
+    const completion = weekInfo ? getWeekCompletionInfo(weekInfo) : { completed: weekData.length, total: weekData.length, isComplete: true };
+    const shouldOpen = !completion.isComplete;
     const summaryScores = weekData.map(function(r){
       const t1w = r.winner === r.team1;
       const t2w = r.winner === r.team2;
-      return (t1w?'<strong>':'')+r.team1+(t1w?'</strong>':'')+' '+r.matchResult+' '+(t2w?'<strong>':'')+r.team2+(t2w?'</strong>':'');
+      return (t1w?'<strong>':'')+escapeLeagueHtml(r.team1)+(t1w?'</strong>':'')+' '+escapeLeagueHtml(r.matchResult)+' '+(t2w?'<strong>':'')+escapeLeagueHtml(r.team2)+(t2w?'</strong>':'');
     }).join(' &nbsp;|&nbsp; ');
     const cards = weekData.map(function(r){
       const t1w = r.winner === r.team1;
       const t2w = r.winner === r.team2;
+      const playerSummary = renderPlayerScoreSummary(r);
       return '<div class="result-card">' +
         '<div class="result-teams">' +
         '<div class="result-team">' + logoImg(r.team1,'result-logo','result-placeholder') +
-        '<span class="result-name'+(t1w?' winner':'')+'">'+r.team1+'</span></div>' +
-        '<div class="result-score-block"><div class="result-matchplay">'+r.matchResult+'</div><div class="result-side">'+r.side+'</div></div>' +
-        '<div class="result-team right"><span class="result-name'+(t2w?' winner':'')+'">'+r.team2+'</span>' +
+        '<span class="result-name'+(t1w?' winner':'')+'">'+escapeLeagueHtml(r.team1)+'</span></div>' +
+        '<div class="result-score-block"><div class="result-matchplay">'+escapeLeagueHtml(r.matchResult)+'</div><div class="result-side">'+escapeLeagueHtml(r.side)+'</div></div>' +
+        '<div class="result-team right"><span class="result-name'+(t2w?' winner':'')+'">'+escapeLeagueHtml(r.team2)+'</span>' +
         logoImg(r.team2,'result-logo','result-placeholder')+'</div></div>' +
-        '<div class="result-detail">'+r.playerLine+'</div>' +
+        '<div class="result-detail">'+escapeLeagueHtml(r.playerLine)+'</div>' +
+        playerSummary +
       '<div style="text-align:right;padding:4px 0 2px;">' +
-      (function(){ var scId = r.resultId || ('w'+r.week+'_'+r.team1+'_'+r.team2).replace(/\s/g,''); return '<button onclick="toggleScorecard(this,\''+scId+'\')" ' +
+      (function(){ var scId = escapeLeagueHtml(String(r.resultId || ('w'+r.week+'_'+r.team1+'_'+r.team2)).replace(/[^a-zA-Z0-9_-]/g,'')); return '<button onclick="toggleScorecard(this,\''+scId+'\')" ' +
       'style="background:transparent;border:1px solid rgba(216,179,93,0.4);color:var(--gold);' +
       'font-family:\'Barlow Condensed\',sans-serif;font-size:11px;letter-spacing:1px;' +
-      'padding:4px 10px;border-radius:999px;cursor:pointer;">▼ View Scorecard</button>' +
+      'padding:4px 10px;border-radius:999px;cursor:pointer;">▼ View Full Scorecard</button>' +
       '<div id="sc-'+scId+'" style="display:none;margin-top:6px;">'+buildScorecardHTML(r)+'</div>'; })() +
-      '</div>';
+      '</div></div>';
     }).join('');
     const headerLabel = 'Week '+week+(weekDate?' · '+weekDate:'')+(weekSide?' · '+weekSide:'');
+    const completionLabel = completion.total ? (completion.completed + '/' + completion.total + ' matches posted') : (weekData.length + ' result' + (weekData.length === 1 ? '' : 's'));
     return '<div class="results-week">' +
-      '<div class="results-week-toggle'+(isLatest?' open':'')+'" onclick="toggleResultsWeek(this)">' +
+      '<div class="results-week-toggle'+(shouldOpen?' open':'')+'" onclick="toggleResultsWeek(this)">' +
       '<div class="results-week-header-row">' +
       '<span class="results-week-title">'+headerLabel+'</span>' +
-      '<span class="results-week-chevron">'+(isLatest?'▲':'▼')+'</span></div>' +
+      '<span class="results-week-status">'+(completion.isComplete?'Completed':'In Progress')+' · '+completionLabel+'</span>' +
+      '<span class="results-week-chevron">'+(shouldOpen?'▲':'▼')+'</span></div>' +
       '<div class="results-week-summary">'+summaryScores+'</div></div>' +
-      '<div class="results-week-body" style="display:'+(isLatest?'block':'none')+'">'+cards+'</div>' +
+      '<div class="results-week-body" style="display:'+(shouldOpen?'block':'none')+'">'+cards+'</div>' +
       '</div>';
   }).join('');
 }
@@ -883,23 +1020,26 @@ function toggleResultsWeek(header) {
 // ── SCHEDULE ──
 function buildSchedule() {
   const el = document.getElementById('schedule-container');
-  const upcoming = SCHEDULE_WEEKS.filter(function(w){ return w.status !== 'completed'; });
+  const upcoming = SCHEDULE_WEEKS.filter(function(w){ return !getWeekCompletionInfo(w).isComplete; });
   if (!upcoming.length) {
     el.innerHTML = '<div class="no-results"><div class="no-results-icon">🏌‍♂️</div><div class="no-results-text">Season schedule complete.<br>See Results for all match outcomes.</div></div>';
     return;
   }
-  el.innerHTML = upcoming.map(function(w){ return (
-    '<div class="week-block">' +
-    '<div class="week-label">Week ' + w.week + '  ·  ' + w.date + '  ·  ' + w.side + '</div>' +
-    w.matchups.map(function(m){ return (
-      '<div class="matchup-card">' +
+  el.innerHTML = upcoming.map(function(w){
+    const completion = getWeekCompletionInfo(w);
+    return '<div class="week-block">' +
+    '<div class="week-label">Week ' + w.week + ' &nbsp;·&nbsp; ' + w.date + ' &nbsp;·&nbsp; ' + w.side + ' &nbsp;·&nbsp; ' + completion.completed + '/' + completion.total + ' completed</div>' +
+    w.matchups.map(function(m){
+      const done = isScheduledMatchCompleted(w.week, m);
+      return '<div class="matchup-card'+(done?' completed-match':'')+'">' +
       '<span class="m-time">' + m.time + '</span>' +
       '<div class="m-team right"><span class="m-name">' + m.home + '</span>' + logoImg(m.home,'m-logo','m-placeholder') + '</div>' +
-      '<div class="vs-badge">VS</div>' +
+      '<div class="vs-badge">' + (done ? 'FINAL' : 'VS') + '</div>' +
       '<div class="m-team">' + logoImg(m.away,'m-logo','m-placeholder') + '<span class="m-name">' + m.away + '</span></div>' +
-      '</div>'); }).join('') +
-    '</div>'); }).join('');
+      '</div>'; }).join('') +
+    '</div>'; }).join('');
 }
+
 
 // ── ADMIN HELPERS ──
 function sideValueFromLabel(label) {
