@@ -718,6 +718,7 @@ function buildDashboard() {
         <div id="lr-dots" class="lr-dots"></div>
       </div>
     </div>
+    <div class="dashboard-panel" style="margin-bottom:14px;"><div class="panel-title">Last Week&#39;s Extras</div><div id="extras-dashboard-content">${buildExtrasPanel()}</div></div>
     <div class="dashboard-two">
       <div class="dashboard-panel"><div class="panel-title">Next Up${nextWeek ? ' · Week ' + nextWeek.week : ''}</div>${nextHtml || '<div class="dash-empty">This week is complete. See Results for match outcomes.</div>'}</div>
       <div class="dashboard-panel"><div class="panel-title">Top Standings</div>${miniRows || '<div class="dash-empty">No standings yet.</div>'}</div>
