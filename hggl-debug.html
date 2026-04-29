@@ -3,13 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>HGGL Debug v3</title>
+<title>HGGL Debug v4</title>
 <style>
   body { font-family: monospace; background: #111; color: #eee; padding: 16px; font-size: 13px; }
   h2 { color: #f5c518; margin: 0 0 16px; }
   .test { background: #1e2a3a; border-radius: 8px; padding: 12px; margin-bottom: 10px; }
   .label { color: #9ab; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
-  .result { word-break: break-all; line-height: 1.6; }
   .ok { color: #7cc77a; } .fail { color: #d66060; } .warn { color: #f5c518; }
   button { background: #f5c518; color: #111; border: none; border-radius: 8px; padding: 12px 20px;
            font-weight: bold; font-size: 14px; cursor: pointer; width: 100%; margin-bottom: 12px; }
@@ -17,20 +16,37 @@
 </style>
 </head>
 <body>
-<h2>HGGL Debug v3 — Schedule Focus</h2>
+<h2>HGGL Debug v4 — Handicap & Stats Focus</h2>
 <button onclick="runAll()">Run All Tests</button>
 
-<div class="test"><div class="label">1. Endpoint reachable?</div><div class="result" id="r1">—</div></div>
-<div class="test"><div class="label">2. Schedule rows in response</div><div class="result" id="r2">—</div></div>
-<div class="test"><div class="label">3. Raw schedule data (first 5 rows)</div><pre id="r3">—</pre></div>
-<div class="test"><div class="label">4. Schedule column headers</div><div class="result" id="r4">—</div></div>
-<div class="test"><div class="label">5. Week numbers found</div><div class="result" id="r5">—</div></div>
-<div class="test"><div class="label">6. Standings rows</div><div class="result" id="r6">—</div></div>
-<div class="test"><div class="label">7. Results rows</div><div class="result" id="r7">—</div></div>
-<div class="test"><div class="label">8. Is current admin.js live? (fetch check)</div><div class="result" id="r8">—</div></div>
+<div class="test"><div class="label">1. Course Handicap Formula (Kyle GHIN 4.6, Front 9)</div><div class="result" id="r1">—</div></div>
+<div class="test"><div class="label">2. Live Results from Sheet — Player Snapshots</div><pre id="r2">—</pre></div>
+<div class="test"><div class="label">3. Actual GHIN value stored in snapshot for each player</div><pre id="r3">—</pre></div>
+<div class="test"><div class="label">4. Calculated course handicap per player</div><pre id="r4">—</pre></div>
+<div class="test"><div class="label">5. Stroke holes per player</div><pre id="r5">—</pre></div>
 
 <script>
 const API = 'https://script.google.com/macros/s/AKfycbz1V4hse07WKBr2a8yTs_gD6dfNkqRXmOvzA-Ewqzos736fBg9WY_bgNX_ZUcbfCN2WOA/exec';
+const SLOPE = 125, RATING = 69.4, PAR_FRONT = 36, PAR_BACK = 35;
+const FRONT = [{hole:1,par:5,hcp:5},{hole:2,par:3,hcp:7},{hole:3,par:4,hcp:11},{hole:4,par:5,hcp:15},{hole:5,par:4,hcp:17},{hole:6,par:4,hcp:9},{hole:7,par:4,hcp:3},{hole:8,par:3,hcp:13},{hole:9,par:4,hcp:1}];
+const BACK  = [{hole:10,par:5,hcp:8},{hole:11,par:4,hcp:16},{hole:12,par:3,hcp:18},{hole:13,par:4,hcp:12},{hole:14,par:3,hcp:2},{hole:15,par:4,hcp:14},{hole:16,par:4,hcp:10},{hole:17,par:3,hcp:4},{hole:18,par:4,hcp:6}];
+
+function nineHoleHdcp(ghinIndex, side) {
+  var idx = parseFloat(ghinIndex);
+  if (isNaN(idx) || ghinIndex === '' || ghinIndex === null || ghinIndex === undefined) return null;
+  var par9 = side === 'front' ? PAR_FRONT : PAR_BACK;
+  var raw = (idx * (SLOPE / 113) / 2) + (RATING / 2 - par9);
+  return Math.floor(raw + 0.5);
+}
+
+function getStrokeHoles(numStrokes, holes) {
+  var sorted = holes.slice().sort(function(a,b){ return a.hcp - b.hcp; });
+  var set = new Set();
+  if (numStrokes > 0) {
+    for (var i = 0; i < Math.min(numStrokes, 9); i++) set.add(sorted[i].hole);
+  }
+  return set;
+}
 
 function set(id, html, cls) {
   var el = document.getElementById(id);
@@ -39,63 +55,84 @@ function set(id, html, cls) {
 }
 
 async function runAll() {
-  set('r1','Fetching...','warn');
+  // Test 1: Formula check for Kyle
+  var kyleHdcp = nineHoleHdcp(4.6, 'front');
+  var kyleStrokes = getStrokeHoles(kyleHdcp, FRONT);
+  document.getElementById('r1').innerHTML =
+    'GHIN 4.6 → raw = ' + ((4.6 * (SLOPE/113) / 2) + (RATING/2 - PAR_FRONT)).toFixed(4) +
+    ' → course hdcp = <strong style="color:#f5c518">' + kyleHdcp + '</strong>' +
+    ' → stroke holes: ' + (kyleHdcp > 0 ? [...kyleStrokes].join(', ') : 'NONE (0 strokes)');
 
+  // Test 2: Fetch results
+  document.getElementById('r2').textContent = 'Fetching...';
   var json = null;
   try {
     var res = await fetch(API + '?action=getLeagueData&v=' + Date.now());
     json = await res.json();
-    set('r1', json.ok ? 'YES — HTTP ' + res.status : 'ERROR: ok=false — ' + json.error, json.ok ? 'ok' : 'fail');
   } catch(e) {
-    set('r1', 'FAILED: ' + e.message, 'fail');
+    document.getElementById('r2').textContent = 'ERROR: ' + e.message;
     return;
   }
 
-  var data = json.data || {};
-  var schedule = data.schedule || [];
+  var results = (json.data || {}).results || [];
+  document.getElementById('r2').textContent = results.length + ' results found';
 
-  // 2. Schedule row count
-  set('r2', schedule.length + ' rows', schedule.length > 4 ? 'ok' : 'fail');
+  if (!results.length) return;
 
-  // 3. Raw first 5 rows
-  document.getElementById('r3').textContent = JSON.stringify(schedule.slice(0,5), null, 2);
+  // Test 3: Show player snapshots
+  var snapInfo = '';
+  results.forEach(function(r, ri) {
+    var snap = r.playersSnapshot || [];
+    var scoreSnap = r.scoreSnapshot || {};
+    snapInfo += 'Result ' + (ri+1) + ': Week ' + r.week + ' · ' + r.team1 + ' vs ' + r.team2 + '\n';
+    snap.forEach(function(p) {
+      snapInfo += '  ' + p.name + ': ghin="' + p.ghin + '" (type: ' + typeof p.ghin + ')\n';
+    });
+    if (!snap.length) {
+      // Try parsing from PlayerScoresJSON
+      var psj = r.PlayerScoresJSON || r['PlayerScoresJSON'] || r['Score Snapshot JSON'] || '';
+      if (psj) {
+        try {
+          var parsed = JSON.parse(psj);
+          snapInfo += '  [Parsed from JSON] playersSnapshot: ' + JSON.stringify(parsed.playersSnapshot || []).substring(0,200) + '\n';
+        } catch(e) {
+          snapInfo += '  [Could not parse PlayerScoresJSON]\n';
+        }
+      } else {
+        snapInfo += '  [No playersSnapshot and no PlayerScoresJSON]\n';
+      }
+    }
+  });
+  document.getElementById('r3').textContent = snapInfo;
 
-  // 4. Column headers from first row
-  if (schedule.length) {
-    var headers = Object.keys(schedule[0]);
-    set('r4', headers.join(' | '), 'warn');
-  } else {
-    set('r4', 'No schedule rows returned', 'fail');
-  }
+  // Test 4: Calculate course handicaps
+  var hdcpInfo = '';
+  results.forEach(function(r, ri) {
+    var snap = r.playersSnapshot || [];
+    var side = r.side === 'Front 9' ? 'front' : 'back';
+    hdcpInfo += 'Result ' + (ri+1) + ' (' + r.side + '):\n';
+    snap.forEach(function(p) {
+      var hdcp = nineHoleHdcp(p.ghin, side);
+      var raw = (parseFloat(p.ghin) * (SLOPE/113) / 2) + (RATING/2 - (side==='front'?PAR_FRONT:PAR_BACK));
+      hdcpInfo += '  ' + p.name + ': ghin=' + p.ghin + ' raw=' + raw.toFixed(3) + ' hdcp=' + hdcp + '\n';
+    });
+  });
+  document.getElementById('r4').textContent = hdcpInfo;
 
-  // 5. Week numbers
-  var weeks = [...new Set(schedule.map(function(r){ return r.Week || r.week || '?'; }))];
-  set('r5', weeks.length + ' weeks: ' + weeks.join(', '), weeks.length > 1 ? 'ok' : 'fail');
-
-  // 6. Standings
-  var standings = data.standings || [];
-  set('r6', standings.length + ' rows', standings.length ? 'ok' : 'warn');
-
-  // 7. Results
-  var results = data.results || [];
-  set('r7', results.length + ' rows', results.length ? 'ok' : 'warn');
-
-  // 8. Check if admin.js on GitHub has fetch() (not JSONP)
-  set('r8', 'Checking...', 'warn');
-  try {
-    var aRes = await fetch('https://kylehiscock.github.io/hockey-guys-golf/admin.js?v=' + Date.now());
-    var text = await aRes.text();
-    var hasFetch = text.includes('async function leagueJsonpRequest');
-    var hasJSONP = text.includes('document.head.appendChild(script)');
-    var weekCount = (text.match(/buildWeekCompletionManager/g) || []).length;
-    set('r8',
-      (hasFetch ? 'fetch() version deployed' : 'STILL USING JSONP — old file on GitHub') +
-      ' | JSONP present: ' + hasJSONP +
-      ' | buildWeekCompletionManager refs: ' + weekCount,
-      hasFetch && !hasJSONP ? 'ok' : 'fail');
-  } catch(e) {
-    set('r8', 'Could not fetch admin.js: ' + e.message, 'fail');
-  }
+  // Test 5: Stroke holes
+  var strokeInfo = '';
+  results.forEach(function(r, ri) {
+    var snap = r.playersSnapshot || [];
+    var side = r.side === 'Front 9' ? 'front' : 'back';
+    var holes = side === 'front' ? FRONT : BACK;
+    strokeInfo += 'Result ' + (ri+1) + ' (' + r.side + '):\n';
+    snap.forEach(function(p) {
+      var hdcp = nineHoleHdcp(p.ghin, side);
+      var strokeHoles = getStrokeHoles(hdcp, holes);
+      strokeInfo += '  ' + p.name + ': hdcp=' + hdcp + ' stroke holes=[' + [...strokeHoles].join(',') + ']\n';
+    });
+  });
+  document.getElementById('r5').textContent = strokeInfo;
 }
 </script>
 </body>
