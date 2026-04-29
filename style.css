@@ -472,35 +472,7 @@ body{font-family:'Barlow',sans-serif;background:var(--dark);color:var(--text);mi
   .latest-result-chip{min-width:142px;}
 }
 
-/* ── Dashboard Extras Panel ── */
-.extras-dashboard-panel { margin-bottom: 14px; }
-.extras-dashboard-label {
-  font-family: 'Barlow Condensed', sans-serif;
-  font-size: 10px; font-weight: 800; letter-spacing: 2px;
-  text-transform: uppercase; color: var(--gold, #d8b35d);
-  margin-bottom: 10px;
-}
-.extras-dashboard-row {
-  display: flex; align-items: flex-start; gap: 10px;
-  margin-bottom: 10px;
-}
-.extras-dashboard-row:last-child { margin-bottom: 0; }
-.extras-dashboard-icon {
-  font-size: 18px; flex-shrink: 0; width: 24px; text-align: center;
-}
-.extras-dashboard-content { flex: 1; min-width: 0; }
-.extras-dashboard-cat {
-  font-family: 'Barlow Condensed', sans-serif;
-  font-size: 10px; font-weight: 800; letter-spacing: 1.5px;
-  text-transform: uppercase; color: var(--muted, #9aaabc);
-  margin-bottom: 3px;
-}
-.extras-dashboard-detail {
-  font-size: 13px; color: #f0f4f8; line-height: 1.4;
-  margin-bottom: 2px;
-}
-
-/* ── Bracket, Results, Leaders, Extras tab (all sessions) ── */
+/* ── Playoff Bracket ── */
 .bracket-wrap { padding: 4px 0 8px; }
 .bracket-round-label {
   font-family: 'Barlow Condensed', sans-serif;
@@ -545,6 +517,8 @@ body{font-family:'Barlow',sans-serif;background:var(--dark);color:var(--text);mi
 .bracket-final .bracket-matchup {
   background: rgba(216,179,93,0.08); border-color: rgba(216,179,93,0.25);
 }
+
+/* ── Collapsible Results Weeks ── */
 .results-week-toggle {
   cursor: pointer; padding: 12px 14px;
   background: rgba(255,255,255,0.04);
@@ -571,6 +545,8 @@ body{font-family:'Barlow',sans-serif;background:var(--dark);color:var(--text);mi
   letter-spacing: 0.5px; line-height: 1.4;
 }
 .results-week-body { margin-bottom: 10px; }
+
+/* ── Latest Result Carousel Dots ── */
 .lr-dots { display: flex; justify-content: center; gap: 6px; margin-top: 8px; min-height: 8px; }
 .lr-dot {
   width: 7px; height: 7px; border-radius: 50%;
@@ -578,6 +554,8 @@ body{font-family:'Barlow',sans-serif;background:var(--dark);color:var(--text);mi
   cursor: pointer; transition: background 0.2s; display: inline-block;
 }
 .lr-dot.active { background: var(--gold, #d8b35d); }
+
+/* ── League Leaders Card ── */
 .league-leaders-card { position: relative; overflow: hidden; }
 .league-leaders-card::before { background: var(--gold, #d8b35d) !important; }
 .leaders-strip { margin-top: 4px; display: flex; flex-direction: column; gap: 7px; }
@@ -600,6 +578,8 @@ body{font-family:'Barlow',sans-serif;background:var(--dark);color:var(--text);mi
   color: var(--ice, #9fc9dc); white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis;
 }
+
+/* ── Skins & CTP Extras Tab ── */
 .extras-card {
   background: linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.022));
   border: 1px solid var(--line, rgba(255,255,255,0.09));
@@ -638,8 +618,10 @@ body{font-family:'Barlow',sans-serif;background:var(--dark);color:var(--text);mi
   font-size: 13px; font-weight: 800; letter-spacing: 1.5px;
   text-transform: uppercase; color: var(--gold, #d8b35d); margin-bottom: 12px;
 }
+
 @media(max-width:680px) {
   .bracket-team-name { font-size: 11px; }
+  .bracket-team-record { font-size: 10px; }
   .bracket-matchup { padding: 8px; gap: 5px; }
   .bracket-seed { width: 18px; height: 18px; font-size: 11px; }
   .leader-row { grid-template-columns: 70px 46px 1fr; }
