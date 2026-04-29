@@ -1707,10 +1707,10 @@ function computePlayerStats() {
 
     if (snap.length >= 4) {
       allPlayers = [
-        {name:normalizePlayerStatName(snap[0].name || snap[0]['Player Name'] || ''), id:snap[0].id || snap[0].playerId || 'p1a', team:result.team1, won:result.winner===result.team1, lost:result.winner===result.team2},
-        {name:normalizePlayerStatName(snap[1].name || snap[1]['Player Name'] || ''), id:snap[1].id || snap[1].playerId || 'p1b', team:result.team1, won:result.winner===result.team1, lost:result.winner===result.team2},
-        {name:normalizePlayerStatName(snap[2].name || snap[2]['Player Name'] || ''), id:snap[2].id || snap[2].playerId || 'p2a', team:result.team2, won:result.winner===result.team2, lost:result.winner===result.team1},
-        {name:normalizePlayerStatName(snap[3].name || snap[3]['Player Name'] || ''), id:snap[3].id || snap[3].playerId || 'p2b', team:result.team2, won:result.winner===result.team2, lost:result.winner===result.team1},
+        {name:normalizePlayerStatName(snap[0].name || snap[0]['Player Name'] || ''), id:snap[0].id || snap[0].playerId || 'p1a', ghin:snap[0].ghin || snap[0].GHIN || '', team:result.team1, won:result.winner===result.team1, lost:result.winner===result.team2},
+        {name:normalizePlayerStatName(snap[1].name || snap[1]['Player Name'] || ''), id:snap[1].id || snap[1].playerId || 'p1b', ghin:snap[1].ghin || snap[1].GHIN || '', team:result.team1, won:result.winner===result.team1, lost:result.winner===result.team2},
+        {name:normalizePlayerStatName(snap[2].name || snap[2]['Player Name'] || ''), id:snap[2].id || snap[2].playerId || 'p2a', ghin:snap[2].ghin || snap[2].GHIN || '', team:result.team2, won:result.winner===result.team2, lost:result.winner===result.team1},
+        {name:normalizePlayerStatName(snap[3].name || snap[3]['Player Name'] || ''), id:snap[3].id || snap[3].playerId || 'p2b', ghin:snap[3].ghin || snap[3].GHIN || '', team:result.team2, won:result.winner===result.team2, lost:result.winner===result.team1},
       ];
     } else {
       var parsedNames = parsePlayerLinePlayers(result.playerLine);
@@ -1739,7 +1739,7 @@ function computePlayerStats() {
 
       var scoreSnapshot = result.scoreSnapshot || {};
       // Full individual course handicap for stats (not relative to lowest)
-      var fullHdcp = (p.ghin && p.ghin !== '') ? (nineHoleHdcp(p.ghin, side) || 0) : null;
+      var fullHdcp = (p.ghin && p.ghin !== '') ? nineHoleHdcp(p.ghin, side) : null;
       var fullStrokeHoles = fullHdcp !== null ? getStrokeHoles(fullHdcp, holes) : new Set();
       var grossTotal=0, holeCount=0;
       holes.forEach(function(h) {
