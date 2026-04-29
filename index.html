@@ -9,9 +9,8 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Condensed:wght@400;600;700;900&family=Barlow:wght@400;500;600;700;800&family=Inter+Tight:wght@500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=4.6-results-schedule-fix">
-<link rel="stylesheet" href="theme-polished.css?v=4.6-results-schedule-fix">
-
+<link rel="stylesheet" href="style.css?v=4.7">
+<link rel="stylesheet" href="theme-polished.css?v=4.7">
 </head>
 <body>
 
@@ -19,14 +18,15 @@
   <div class="ticker-label">LIVE &nbsp;·&nbsp; 2026</div>
   <div class="ticker-track" id="ticker-track"></div>
 </div>
+
 <div class="hero">
   <div class="hero-bg"></div><div class="hero-stripes"></div>
   <div class="hero-inner">
-    <div class="hero-eyebrow"><span class="hero-puck">🏒</span> Official League Site <span class="hero-puck">⛳</span></div>
+    <div class="hero-eyebrow"><span class="hero-puck">&#x1F3D2;</span> Official League Site <span class="hero-puck">&#x26F3;</span></div>
     <div class="hero-title">The Hockey Guys<br><span>Golf League</span></div>
     <div class="hero-sub"><b>Twin Hills Golf Course</b> &nbsp;·&nbsp; Spencerport, NY</div>
     <div class="hero-weather" id="hero-weather">
-      <span class="weather-loading">&#9729;&#xFE0F; Loading weather...</span>
+      <span class="weather-loading">Loading weather...</span>
     </div>
     <div class="hero-pills">
       <span class="pill">2-Man Best Ball</span><span class="pill">Match Play</span>
@@ -34,16 +34,19 @@
     </div>
   </div>
 </div>
+
 <div class="nav">
   <button class="nav-btn active" onclick="show('dashboard',this)">Home</button>
   <button class="nav-btn" onclick="show('standings',this)">Standings</button>
   <button class="nav-btn" onclick="show('schedule',this)">Schedule</button>
   <button class="nav-btn" onclick="show('results',this)">Results</button>
+  <button class="nav-btn" onclick="show('extras',this);buildExtras()">Skins &amp; CTP</button>
   <button class="nav-btn" onclick="show('stats',this);buildStats()">Stats</button>
   <button class="nav-btn" onclick="show('rules',this)">Rules</button>
 </div>
 
 <div class="content">
+
   <div id="dashboard" class="section active">
     <div class="section-header"><span class="section-label">League Dashboard</span><div class="section-header-line"></div></div>
     <p class="section-subtitle">Quick glance at tee times, standings, results, and playoff matchups.</p>
@@ -76,52 +79,44 @@
     <div class="section-header"><span class="section-label">Results</span><div class="section-header-line"></div></div>
     <p class="section-subtitle" id="results-updated">Final match results will show here once scores are saved.</p>
     <div id="results-container">
-      <div class="no-results"><div class="no-results-icon">🏌️</div><div class="no-results-text">No results yet<br>Check back after Week 1</div></div>
+      <div class="no-results"><div class="no-results-icon">&#x1F3CC;&#xFE0F;</div><div class="no-results-text">No results yet<br>Check back after Week 1</div></div>
+    </div>
+  </div>
+
+  <div id="extras" class="section">
+    <div class="section-header"><span class="section-label">Skins &amp; CTP</span><div class="section-header-line"></div></div>
+    <p class="section-subtitle">Weekly net skins results and closest to the pin contest winners.</p>
+    <div id="extras-container">
+      <div class="no-results"><div class="no-results-icon">&#x1F3C6;</div><div class="no-results-text">No skins or CTP results yet<br>Check back after Week 1</div></div>
     </div>
   </div>
 
   <div id="stats" class="section">
     <div class="section-header"><span class="section-label">Player Stats</span><div class="section-header-line"></div></div>
     <p class="section-subtitle">Individual scoring trends and season leaders will populate after scorecards are saved.</p>
-
-    <!-- Stats Filter -->
     <div class="stats-filter">
       <button class="stats-filter-btn active" onclick="setStatFilter('all',this)">All Players</button>
       <button class="stats-filter-btn" onclick="setStatFilter('leaders',this)">Leaders</button>
     </div>
-
-    <!-- Season Leaders Banner -->
     <div id="stats-leaders-banner" style="display:none"></div>
-
-    <!-- Player Stats Cards -->
     <div id="stats-no-data" class="no-results">
-      <div class="no-results-icon">📊</div>
+      <div class="no-results-icon">&#x1F4CA;</div>
       <div class="no-results-text">No stats yet<br>Enter Week 1 scores to see individual stats</div>
     </div>
     <div id="stats-container" style="display:none">
-
-      <!-- Season Leaders row -->
       <div id="leaders-row" class="leaders-row"></div>
-
-      <!-- Filter toggle -->
       <div id="player-search-wrap" style="margin-bottom:14px;display:none">
         <input type="text" id="player-search" class="player-search-input" placeholder="Search player..." oninput="filterPlayerStats()">
       </div>
-
-      <!-- All Players Grid -->
       <div id="player-cards-container"></div>
-
-      <!-- Hole-by-Hole Breakdown -->
       <div class="section-header" style="margin-top:24px">
         <span class="section-label" style="font-size:16px">Hole Breakdown</span>
         <div class="section-header-line"></div>
       </div>
       <p style="font-family:'Barlow Condensed',sans-serif;font-size:12px;color:var(--muted);margin-bottom:12px;letter-spacing:1px;">Average gross score per hole across all rounds played</p>
       <div id="hole-breakdown-container"></div>
-
     </div>
   </div>
-
 
   <div id="rules" class="section">
     <div class="section-header"><span class="section-label">League Rules</span><div class="section-header-line"></div></div>
@@ -129,108 +124,81 @@
     <div class="rules-grid">
       <div class="rule-card"><div class="rule-title">Format</div><p>Weekly 2-man best ball match play. Each matchup is played over 9 holes.</p></div>
       <div class="rule-card"><div class="rule-title">GHIN Handicaps</div><p>GHIN handicaps are mandatory. GHINs will be used for league handicapping throughout the season, so all players are expected to keep their GHIN updated and post scores after each round.</p></div>
-      <div class="rule-card rule-card-wide"><div class="rule-title">Playoff Format</div><p>All 8 teams make the playoffs. The opening round is seeded bracket-style with 1 vs. 8, 2 vs. 7, 3 vs. 6, and 4 vs. 5.</p><p>After each playoff round, teams are reseeded so the highest remaining seed plays the lowest remaining seed.</p><p>If teams are tied with the same record in the standings, the tiebreaker is total holes won for the season.</p></div>
-      <div class="rule-card rule-card-wide"><div class="rule-title">Tiebreakers</div><p>Playoff holes will no longer be used. For both the regular season and playoffs, ties will be broken using the following structure:</p><ol class="rule-list"><li>Combined net total</li><li>Net scores on the hardest holes, essentially skins</li><li>Most net birdies in the round</li><li>Most gross pars</li></ol></div>
+      <div class="rule-card rule-card-wide"><div class="rule-title">Playoff Format</div><p>All 8 teams make the playoffs. The opening round is seeded bracket-style with 1 vs. 8, 2 vs. 7, 3 vs. 6, and 4 vs. 5.</p><p>After each playoff round, teams are reseeded so the highest remaining seed plays the lowest remaining seed.</p><p>If multiple teams are tied with the same record in the standings, seeding is determined by total holes won for the season — most holes won earns the higher seed.</p></div>
+      <div class="rule-card rule-card-wide"><div class="rule-title">Match Tiebreakers</div><p>If a match is tied after 9 holes, the result is decided using the following steps in order:</p><ol class="rule-list"><li>Combined net total — lowest combined net score wins</li><li>Net scores on the hardest holes (skins-style) — best net score on the #1 handicap hole, then #2, etc.</li><li>Most net birdies in the round</li><li>Most gross pars in the round</li></ol></div>
     </div>
   </div>
 
 </div>
+
 <div class="footer">
   <div>Hockey Guys Golf League &nbsp;·&nbsp; 2026 Season &nbsp;·&nbsp; Twin Hills · Spencerport NY</div>
-  <a class="footer-admin-link" href="admin.html?v=4.6-results-schedule-fix" aria-label="Commissioner login" title="Commissioner login">⚙</a>
+  <a class="footer-admin-link" href="admin.html" aria-label="Commissioner login" title="Commissioner login">&#9881;</a>
 </div>
 
 <script>
 (function() {
-  var WEATHER_API = 'https://api.open-meteo.com/v1/forecast';
-  var LAT = 43.1853;
-  var LON = -77.8081;
-  var PARAMS = 'temperature_2m,weathercode,windspeed_10m,winddirection_10m';
-  var URL = WEATHER_API + '?latitude=' + LAT + '&longitude=' + LON +
-    '&current_weather=true&temperature_unit=fahrenheit&windspeed_unit=mph&forecast_days=7&daily=weathercode,temperature_2m_max,precipitation_probability_max&timezone=America%2FNew_York';
-
-  function weatherIcon(code) {
-    if (code === 0) return '&#9728;&#xFE0F;';
-    if (code <= 2) return '&#9925;&#xFE0F;';
-    if (code <= 3) return '&#x1F325;&#xFE0F;';
-    if (code <= 48) return '&#x1F32B;&#xFE0F;';
-    if (code <= 57) return '&#x1F326;&#xFE0F;';
-    if (code <= 67) return '&#x1F327;&#xFE0F;';
-    if (code <= 77) return '&#x1F328;&#xFE0F;';
-    if (code <= 82) return '&#x1F326;&#xFE0F;';
-    return '&#x26C8;&#xFE0F;';
+  var URL = 'https://api.open-meteo.com/v1/forecast?latitude=43.1853&longitude=-77.8081' +
+    '&current_weather=true&temperature_unit=fahrenheit&windspeed_unit=mph' +
+    '&daily=weathercode,temperature_2m_max,precipitation_probability_max' +
+    '&forecast_days=7&timezone=America%2FNew_York';
+  function icon(c) {
+    if(c===0) return '\u2600\uFE0F';
+    if(c<=2) return '\u26C5\uFE0F';
+    if(c<=3) return '\uD83C\uDF25\uFE0F';
+    if(c<=48) return '\uD83C\uDF2B\uFE0F';
+    if(c<=57) return '\uD83C\uDF26\uFE0F';
+    if(c<=67) return '\uD83C\uDF27\uFE0F';
+    if(c<=77) return '\uD83C\uDF28\uFE0F';
+    if(c<=82) return '\uD83C\uDF26\uFE0F';
+    return '\u26C8\uFE0F';
   }
-
-  function weatherDesc(code) {
-    if (code === 0) return 'Clear';
-    if (code <= 2) return 'Partly Cloudy';
-    if (code <= 3) return 'Overcast';
-    if (code <= 48) return 'Foggy';
-    if (code <= 57) return 'Drizzle';
-    if (code <= 67) return 'Rain';
-    if (code <= 77) return 'Snow';
-    if (code <= 82) return 'Showers';
+  function desc(c) {
+    if(c===0) return 'Clear';
+    if(c<=2) return 'Partly Cloudy';
+    if(c<=3) return 'Overcast';
+    if(c<=48) return 'Foggy';
+    if(c<=57) return 'Drizzle';
+    if(c<=67) return 'Rain';
+    if(c<=77) return 'Snow';
+    if(c<=82) return 'Showers';
     return 'Thunderstorms';
   }
-
-  function windDir(deg) {
-    var dirs = ['N','NE','E','SE','S','SW','W','NW'];
-    return dirs[Math.round(deg / 45) % 8];
-  }
-
-  function nextTuesday(dailyDates) {
-    for (var i = 0; i < dailyDates.length; i++) {
-      var d = new Date(dailyDates[i] + 'T12:00:00');
-      if (d.getDay() === 2) return i;
-    }
-    return -1;
-  }
-
-  fetch(URL).then(function(r){ return r.json(); }).then(function(data) {
+  function wdir(d) { return ['N','NE','E','SE','S','SW','W','NW'][Math.round(d/45)%8]; }
+  fetch(URL).then(function(r){return r.json();}).then(function(data) {
     var el = document.getElementById('hero-weather');
-    if (!el) return;
+    if(!el) return;
     var cw = data.current_weather;
-    var temp = Math.round(cw.temperature);
-    var code = cw.weathercode;
-    var wind = Math.round(cw.windspeed);
-    var wdir = windDir(cw.winddirection);
-    var icon = weatherIcon(code);
-    var desc = weatherDesc(code);
-
-    // Find next Tuesday forecast
-    var daily = data.daily || {};
-    var dates = daily.time || [];
-    var tuesdayIdx = nextTuesday(dates);
-    var tuesdayHtml = '';
-    if (tuesdayIdx >= 0) {
-      var tCode = daily.weathercode[tuesdayIdx];
-      var tHigh = Math.round(daily.temperature_2m_max[tuesdayIdx]);
-      var tPrecip = daily.precipitation_probability_max[tuesdayIdx] || 0;
-      var tDate = new Date(dates[tuesdayIdx] + 'T12:00:00');
-      var isToday = tuesdayIdx === 0;
-      tuesdayHtml = '<span class="weather-divider">&#124;</span>' +
-        '<span class="weather-tuesday">' +
-        (isToday ? 'Today' : 'Tue ' + (tDate.getMonth()+1) + '/' + tDate.getDate()) +
-        ': ' + weatherIcon(tCode) + ' ' + tHigh + '&deg;F' +
-        (tPrecip > 20 ? ' &nbsp;&#x1F4A7; ' + tPrecip + '%' : '') +
-        '</span>';
+    var html = '<span class="weather-current">' +
+      icon(cw.weathercode) + ' ' + Math.round(cw.temperature) + '&deg;F' +
+      ' &nbsp;&middot;&nbsp; ' + desc(cw.weathercode) +
+      ' &nbsp;&middot;&nbsp; Wind ' + Math.round(cw.windspeed) + 'mph ' + wdir(cw.winddirection) +
+      '</span>';
+    var dates = (data.daily||{}).time||[];
+    for(var i=0;i<dates.length;i++) {
+      if(new Date(dates[i]+'T12:00:00').getDay()===2) {
+        var tDate = new Date(dates[i]+'T12:00:00');
+        var tPrecip = data.daily.precipitation_probability_max[i]||0;
+        html += '<span class="weather-divider">|</span>' +
+          '<span class="weather-tuesday">' +
+          (i===0?'Today':'Tue '+(tDate.getMonth()+1)+'/'+tDate.getDate()) + ': ' +
+          icon(data.daily.weathercode[i]) + ' ' +
+          Math.round(data.daily.temperature_2m_max[i]) + '&deg;F' +
+          (tPrecip>20?' &#x1F4A7; '+tPrecip+'%':'') +
+          '</span>';
+        break;
+      }
     }
-
-    el.innerHTML =
-      '<span class="weather-current">' +
-      icon + ' ' + temp + '&deg;F &nbsp;&middot;&nbsp; ' + desc +
-      ' &nbsp;&middot;&nbsp; Wind ' + wind + 'mph ' + wdir +
-      '</span>' +
-      tuesdayHtml;
-
-  }).catch(function() {
-    var el = document.getElementById('hero-weather');
-    if (el) el.style.display = 'none';
+    el.innerHTML = html;
+  }).catch(function(){
+    var el=document.getElementById('hero-weather');
+    if(el) el.style.display='none';
   });
 })();
 </script>
-<script src="public.js?v=4.6-results-schedule-fix"></script>
-<script src="polish.js?v=4.6-results-schedule-fix"></script>
+
+<script src="public.js?v=4.7"></script>
+<script src="polish.js?v=4.7"></script>
 
 </body>
 </html>
