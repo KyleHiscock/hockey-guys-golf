@@ -3,136 +3,78 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>HGGL Debug v4</title>
+<title>HGGL Debug v5</title>
 <style>
-  body { font-family: monospace; background: #111; color: #eee; padding: 16px; font-size: 13px; }
+  body { font-family: monospace; background: #111; color: #eee; padding: 16px; font-size: 12px; }
   h2 { color: #f5c518; margin: 0 0 16px; }
   .test { background: #1e2a3a; border-radius: 8px; padding: 12px; margin-bottom: 10px; }
   .label { color: #9ab; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
-  .ok { color: #7cc77a; } .fail { color: #d66060; } .warn { color: #f5c518; }
   button { background: #f5c518; color: #111; border: none; border-radius: 8px; padding: 12px 20px;
            font-weight: bold; font-size: 14px; cursor: pointer; width: 100%; margin-bottom: 12px; }
-  pre { white-space: pre-wrap; font-size: 11px; color: #9ab; margin: 0; }
+  pre { white-space: pre-wrap; font-size: 11px; color: #9ab; margin: 0; word-break: break-all; }
 </style>
 </head>
 <body>
-<h2>HGGL Debug v4 — Handicap & Stats Focus</h2>
+<h2>HGGL Debug v5 — Raw Results Row</h2>
 <button onclick="runAll()">Run All Tests</button>
 
-<div class="test"><div class="label">1. Course Handicap Formula (Kyle GHIN 4.6, Front 9)</div><div class="result" id="r1">—</div></div>
-<div class="test"><div class="label">2. Live Results from Sheet — Player Snapshots</div><pre id="r2">—</pre></div>
-<div class="test"><div class="label">3. Actual GHIN value stored in snapshot for each player</div><pre id="r3">—</pre></div>
-<div class="test"><div class="label">4. Calculated course handicap per player</div><pre id="r4">—</pre></div>
-<div class="test"><div class="label">5. Stroke holes per player</div><pre id="r5">—</pre></div>
+<div class="test"><div class="label">Raw keys in Result 1 (all fields returned from Sheet)</div><pre id="r1">—</pre></div>
+<div class="test"><div class="label">Key values: Week, Team 1, Team 2, Side, MatchResult</div><pre id="r2">—</pre></div>
+<div class="test"><div class="label">Course handicap calculation per player (Result 1)</div><pre id="r3">—</pre></div>
 
 <script>
 const API = 'https://script.google.com/macros/s/AKfycbz1V4hse07WKBr2a8yTs_gD6dfNkqRXmOvzA-Ewqzos736fBg9WY_bgNX_ZUcbfCN2WOA/exec';
 const SLOPE = 125, RATING = 69.4, PAR_FRONT = 36, PAR_BACK = 35;
-const FRONT = [{hole:1,par:5,hcp:5},{hole:2,par:3,hcp:7},{hole:3,par:4,hcp:11},{hole:4,par:5,hcp:15},{hole:5,par:4,hcp:17},{hole:6,par:4,hcp:9},{hole:7,par:4,hcp:3},{hole:8,par:3,hcp:13},{hole:9,par:4,hcp:1}];
-const BACK  = [{hole:10,par:5,hcp:8},{hole:11,par:4,hcp:16},{hole:12,par:3,hcp:18},{hole:13,par:4,hcp:12},{hole:14,par:3,hcp:2},{hole:15,par:4,hcp:14},{hole:16,par:4,hcp:10},{hole:17,par:3,hcp:4},{hole:18,par:4,hcp:6}];
 
 function nineHoleHdcp(ghinIndex, side) {
   var idx = parseFloat(ghinIndex);
-  if (isNaN(idx) || ghinIndex === '' || ghinIndex === null || ghinIndex === undefined) return null;
+  if (isNaN(idx) || ghinIndex === '' || ghinIndex === null) return null;
   var par9 = side === 'front' ? PAR_FRONT : PAR_BACK;
   var raw = (idx * (SLOPE / 113) / 2) + (RATING / 2 - par9);
   return Math.floor(raw + 0.5);
 }
 
-function getStrokeHoles(numStrokes, holes) {
-  var sorted = holes.slice().sort(function(a,b){ return a.hcp - b.hcp; });
-  var set = new Set();
-  if (numStrokes > 0) {
-    for (var i = 0; i < Math.min(numStrokes, 9); i++) set.add(sorted[i].hole);
-  }
-  return set;
-}
-
-function set(id, html, cls) {
-  var el = document.getElementById(id);
-  el.innerHTML = html;
-  if (cls) el.className = 'result ' + cls;
-}
-
 async function runAll() {
-  // Test 1: Formula check for Kyle
-  var kyleHdcp = nineHoleHdcp(4.6, 'front');
-  var kyleStrokes = getStrokeHoles(kyleHdcp, FRONT);
-  document.getElementById('r1').innerHTML =
-    'GHIN 4.6 → raw = ' + ((4.6 * (SLOPE/113) / 2) + (RATING/2 - PAR_FRONT)).toFixed(4) +
-    ' → course hdcp = <strong style="color:#f5c518">' + kyleHdcp + '</strong>' +
-    ' → stroke holes: ' + (kyleHdcp > 0 ? [...kyleStrokes].join(', ') : 'NONE (0 strokes)');
+  var res = await fetch(API + '?action=getLeagueData&v=' + Date.now());
+  var json = await res.json();
+  var results = (json.data || {}).results || [];
 
-  // Test 2: Fetch results
-  document.getElementById('r2').textContent = 'Fetching...';
-  var json = null;
-  try {
-    var res = await fetch(API + '?action=getLeagueData&v=' + Date.now());
-    json = await res.json();
-  } catch(e) {
-    document.getElementById('r2').textContent = 'ERROR: ' + e.message;
+  if (!results.length) {
+    document.getElementById('r1').textContent = 'No results returned';
     return;
   }
 
-  var results = (json.data || {}).results || [];
-  document.getElementById('r2').textContent = results.length + ' results found';
+  var row = results[0];
 
-  if (!results.length) return;
+  // Show ALL keys
+  document.getElementById('r1').textContent = Object.keys(row).join('\n');
 
-  // Test 3: Show player snapshots
-  var snapInfo = '';
-  results.forEach(function(r, ri) {
-    var snap = r.playersSnapshot || [];
-    var scoreSnap = r.scoreSnapshot || {};
-    snapInfo += 'Result ' + (ri+1) + ': Week ' + r.week + ' · ' + r.team1 + ' vs ' + r.team2 + '\n';
-    snap.forEach(function(p) {
-      snapInfo += '  ' + p.name + ': ghin="' + p.ghin + '" (type: ' + typeof p.ghin + ')\n';
-    });
-    if (!snap.length) {
-      // Try parsing from PlayerScoresJSON
-      var psj = r.PlayerScoresJSON || r['PlayerScoresJSON'] || r['Score Snapshot JSON'] || '';
-      if (psj) {
-        try {
-          var parsed = JSON.parse(psj);
-          snapInfo += '  [Parsed from JSON] playersSnapshot: ' + JSON.stringify(parsed.playersSnapshot || []).substring(0,200) + '\n';
-        } catch(e) {
-          snapInfo += '  [Could not parse PlayerScoresJSON]\n';
-        }
-      } else {
-        snapInfo += '  [No playersSnapshot and no PlayerScoresJSON]\n';
-      }
-    }
+  // Show specific values
+  document.getElementById('r2').textContent =
+    'Week: ' + JSON.stringify(row.Week) + '\n' +
+    'week: ' + JSON.stringify(row.week) + '\n' +
+    'Team 1: ' + JSON.stringify(row['Team 1']) + '\n' +
+    'Team1: ' + JSON.stringify(row.Team1) + '\n' +
+    'Team 2: ' + JSON.stringify(row['Team 2']) + '\n' +
+    'Side: ' + JSON.stringify(row.Side) + '\n' +
+    'side: ' + JSON.stringify(row.side) + '\n' +
+    'MatchResult: ' + JSON.stringify(row.MatchResult) + '\n' +
+    'Result Text: ' + JSON.stringify(row['Result Text']) + '\n' +
+    'Winner: ' + JSON.stringify(row.Winner);
+
+  // Parse PlayerScoresJSON and show player handicaps
+  var psj = row.PlayerScoresJSON || row['Player Scores JSON'] || row['Score Snapshot JSON'] || '';
+  var parsed = {};
+  try { parsed = JSON.parse(psj); } catch(e) { parsed = {}; }
+  var snap = parsed.playersSnapshot || [];
+  var side = (row.Side || row.side || '').indexOf('Front') !== -1 ? 'front' : 'back';
+
+  var hdcpInfo = 'Side detected: ' + side + '\n\n';
+  snap.forEach(function(p) {
+    var hdcp = nineHoleHdcp(p.ghin, side);
+    hdcpInfo += p.name + ': GHIN=' + p.ghin + ' → course hdcp=' + hdcp + '\n';
   });
-  document.getElementById('r3').textContent = snapInfo;
-
-  // Test 4: Calculate course handicaps
-  var hdcpInfo = '';
-  results.forEach(function(r, ri) {
-    var snap = r.playersSnapshot || [];
-    var side = r.side === 'Front 9' ? 'front' : 'back';
-    hdcpInfo += 'Result ' + (ri+1) + ' (' + r.side + '):\n';
-    snap.forEach(function(p) {
-      var hdcp = nineHoleHdcp(p.ghin, side);
-      var raw = (parseFloat(p.ghin) * (SLOPE/113) / 2) + (RATING/2 - (side==='front'?PAR_FRONT:PAR_BACK));
-      hdcpInfo += '  ' + p.name + ': ghin=' + p.ghin + ' raw=' + raw.toFixed(3) + ' hdcp=' + hdcp + '\n';
-    });
-  });
-  document.getElementById('r4').textContent = hdcpInfo;
-
-  // Test 5: Stroke holes
-  var strokeInfo = '';
-  results.forEach(function(r, ri) {
-    var snap = r.playersSnapshot || [];
-    var side = r.side === 'Front 9' ? 'front' : 'back';
-    var holes = side === 'front' ? FRONT : BACK;
-    strokeInfo += 'Result ' + (ri+1) + ' (' + r.side + '):\n';
-    snap.forEach(function(p) {
-      var hdcp = nineHoleHdcp(p.ghin, side);
-      var strokeHoles = getStrokeHoles(hdcp, holes);
-      strokeInfo += '  ' + p.name + ': hdcp=' + hdcp + ' stroke holes=[' + [...strokeHoles].join(',') + ']\n';
-    });
-  });
-  document.getElementById('r5').textContent = strokeInfo;
+  document.getElementById('r3').textContent = hdcpInfo;
 }
 </script>
 </body>
