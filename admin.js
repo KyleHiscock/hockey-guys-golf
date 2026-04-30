@@ -985,8 +985,12 @@ function calcDisplayedResultFromSnapshot(r) {
   var strokeSets = snap.map(function(p, i) { return getStrokeHoles(strokes[i], holes); });
   var status = 0;
   var holesWithScores = 0;
+  var matchOver = false;
+  var matchOverResult = '';
+  var lockedWinnerStatus = 0;
 
-  holes.forEach(function(h) {
+  for (var hi = 0; hi < holes.length; hi++) {
+    var h = holes[hi];
     var t1nets = [0,1].map(function(pi) {
       var g = getScoreForPlayerHole(scores, snap[pi], pi, h.hole);
       if (g === null || isNaN(g)) return null;
@@ -998,16 +1002,35 @@ function calcDisplayedResultFromSnapshot(r) {
       return g - holeStrokeCount(strokeSets[pi], h.hole);
     }).filter(function(v) { return v !== null; });
 
-    if (!t1nets.length || !t2nets.length) return;
+    if (!t1nets.length || !t2nets.length) continue;
     holesWithScores++;
     var t1best = Math.min.apply(null, t1nets);
     var t2best = Math.min.apply(null, t2nets);
     if (t1best < t2best) status++;
     else if (t2best < t1best) status--;
-  });
 
-  // Only override the saved label when every hole was scored and the final
-  // 9-hole margin is clear. Tied matches keep the saved tiebreaker label.
+    if (!matchOver) {
+      var holesLeft = holes.length - (hi + 1);
+      if (Math.abs(status) > holesLeft) {
+        matchOver = true;
+        lockedWinnerStatus = status;
+        matchOverResult = Math.abs(status) + '&' + holesLeft;
+      }
+    }
+  }
+
+  // Official match-play display: once a match is mathematically closed, keep
+  // that label (5&4, 3&2, etc.) even if all 9 holes were later entered for
+  // hole-won standings totals. If it never closed early, show final UP margin.
+  if (matchOver && matchOverResult) {
+    return {
+      matchResult: matchOverResult,
+      winner: lockedWinnerStatus > 0 ? r.team1 : r.team2,
+      matchStatus: lockedWinnerStatus,
+      holesWithScores: holesWithScores
+    };
+  }
+
   if (holesWithScores !== holes.length || status === 0) return null;
   return {
     matchResult: Math.abs(status) + ' UP',
@@ -1439,8 +1462,15 @@ function calcMatchState(players, strokeSets, holes) {
   }
 
   let matchResult = '', winner = null;
-  if(holesWithScores === holes.length) {
-    // All 9 holes were scored. Display the actual final 9-hole margin.
+  if(matchOver) {
+    // Official match-play result locks as soon as the match is mathematically
+    // over. Any holes entered after that are still counted by calcHoleWinTotals
+    // for standings/seeding, but they do not change the result label.
+    matchResult = matchOverResult;
+    winner = lockedWinnerStatus > 0 ? 0 : 1;
+  } else if(holesWithScores === holes.length) {
+    // If the match never closed early, use the final 9-hole margin or the
+    // configured tiebreaker for an all-square match.
     if(officialStatus === 0) {
       const tb = calcTieBreakerWinner(players, strokeSets, holes);
       matchResult = tb.label;
@@ -1449,16 +1479,13 @@ function calcMatchState(players, strokeSets, holes) {
     }
     matchResult = `${Math.abs(officialStatus)} UP`;
     winner = officialStatus > 0 ? 0 : 1;
-  } else if(matchOver) {
-    matchResult = matchOverResult;
-    winner = lockedWinnerStatus > 0 ? 0 : 1;
   } else {
     // In progress
     if(liveStatus === 0) matchResult = holesWithScores > 0 ? 'AS (in progress)' : '';
     else matchResult = `${Math.abs(liveStatus)} ${liveStatus > 0 ? 'UP T1' : 'UP T2'} (thru ${holesWithScores})`;
   }
 
-  return {matchStatus: officialStatus, matchOver, matchResult, winner, holesWithScores};
+  return {matchStatus: matchOver ? lockedWinnerStatus : officialStatus, matchOver, matchResult, winner, holesWithScores};
 }
 
 
