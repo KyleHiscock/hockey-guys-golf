@@ -1692,69 +1692,82 @@ function getScoreForPlayerHole(scoreSnapshot, player, playerIndex, holeNumber) {
 
 function computePlayerStats() {
   const players = {};
-  const statResults = getUniqueResultsForPlayerStats();
-
-  statResults.forEach(function(result) {
+  RESULTS.forEach(function(result) {
     var side = result.side === 'Front 9' ? 'front' : 'back';
     var holes = side === 'front' ? COURSE.front : COURSE.back;
+    var snap = result.playersSnapshot || [];
+    var scores = result.scoreSnapshot || {};
     var allPlayers = [];
-    var snap = Array.isArray(result.playersSnapshot) ? result.playersSnapshot : [];
-
     if (snap.length >= 4) {
       allPlayers = [
-        {name:normalizePlayerStatName(snap[0].name || snap[0]['Player Name'] || ''), id:snap[0].id || snap[0].playerId || 'p1a', ghin:snap[0].ghin || snap[0].GHIN || '', team:result.team1, won:result.winner===result.team1, lost:result.winner===result.team2},
-        {name:normalizePlayerStatName(snap[1].name || snap[1]['Player Name'] || ''), id:snap[1].id || snap[1].playerId || 'p1b', ghin:snap[1].ghin || snap[1].GHIN || '', team:result.team1, won:result.winner===result.team1, lost:result.winner===result.team2},
-        {name:normalizePlayerStatName(snap[2].name || snap[2]['Player Name'] || ''), id:snap[2].id || snap[2].playerId || 'p2a', ghin:snap[2].ghin || snap[2].GHIN || '', team:result.team2, won:result.winner===result.team2, lost:result.winner===result.team1},
-        {name:normalizePlayerStatName(snap[3].name || snap[3]['Player Name'] || ''), id:snap[3].id || snap[3].playerId || 'p2b', ghin:snap[3].ghin || snap[3].GHIN || '', team:result.team2, won:result.winner===result.team2, lost:result.winner===result.team1},
+        {name:normalizePlayerStatName(snap[0].name||snap[0]['Player Name']||''), id:snap[0].id||'p1a', ghin:snap[0].ghin||snap[0].GHIN||'', team:result.team1, won:result.winner===result.team1, lost:result.winner===result.team2},
+        {name:normalizePlayerStatName(snap[1].name||snap[1]['Player Name']||''), id:snap[1].id||'p1b', ghin:snap[1].ghin||snap[1].GHIN||'', team:result.team1, won:result.winner===result.team1, lost:result.winner===result.team2},
+        {name:normalizePlayerStatName(snap[2].name||snap[2]['Player Name']||''), id:snap[2].id||'p2a', ghin:snap[2].ghin||snap[2].GHIN||'', team:result.team2, won:result.winner===result.team2, lost:result.winner===result.team1},
+        {name:normalizePlayerStatName(snap[3].name||snap[3]['Player Name']||''), id:snap[3].id||'p2b', ghin:snap[3].ghin||snap[3].GHIN||'', team:result.team2, won:result.winner===result.team2, lost:result.winner===result.team1},
       ];
     } else {
       var parsedNames = parsePlayerLinePlayers(result.playerLine);
-      allPlayers = [
-        {name:parsedNames[0], id:'p1a', team:result.team1, won:result.winner===result.team1, lost:result.winner===result.team2},
-        {name:parsedNames[1], id:'p1b', team:result.team1, won:result.winner===result.team1, lost:result.winner===result.team2},
-        {name:parsedNames[2], id:'p2a', team:result.team2, won:result.winner===result.team2, lost:result.winner===result.team1},
-        {name:parsedNames[3], id:'p2b', team:result.team2, won:result.winner===result.team2, lost:result.winner===result.team1},
-      ];
+      allPlayers = ['p1a','p1b','p2a','p2b'].map(function(id, i) {
+        return {name:normalizePlayerStatName(parsedNames[i]||''), id:id, ghin:'',
+          team: i < 2 ? result.team1 : result.team2,
+          won: i < 2 ? result.winner===result.team1 : result.winner===result.team2,
+          lost: i < 2 ? result.winner===result.team2 : result.winner===result.team1};
+      });
     }
-
-    allPlayers.forEach(function(p, playerIndex) {
-      if(!p.name || /^Player\s/i.test(p.name)) return;
-      if(!players[p.name]) {
-        players[p.name] = {name:p.name, team:p.team, matchWins:0, matchLosses:0, matchTies:0,
-          roundsPlayed:0, totalGross:0, totalHoles:0, bestGross:Infinity, worstGross:-Infinity,
-          parDiffs:[], birdies:0, pars:0, bogeys:0, doubles:0, worse:0, holeScores:{}};
-      }
+    var wlCounted = {};
+    allPlayers.forEach(function(p) {
+      if (!p.name || p.name.startsWith('Player')) return;
+      if (!players[p.name]) players[p.name] = {
+        name:p.name, team:p.team, matchWins:0, matchLosses:0, matchTies:0,
+        roundsPlayed:0, totalGross:0, totalNet:0, totalHoles:0,
+        bestGross:Infinity, worstGross:-Infinity,
+        bestNet:undefined, worstNet:undefined,
+        parDiffs:[], birdies:0, pars:0, bogeys:0, doubles:0, worse:0,
+        netBirdies:0, holeScores:{}
+      };
       var ps = players[p.name];
+      if (!wlCounted[p.name]) {
+        if (p.won) ps.matchWins++;
+        else if (p.lost) ps.matchLosses++;
+        else ps.matchTies++;
+        wlCounted[p.name] = true;
+      }
       ps.team = p.team;
-
-      // Count the team match result once per player per unique match.
-      if(p.won) ps.matchWins++;
-      else if(p.lost) ps.matchLosses++;
-      else ps.matchTies++;
-
-      var scoreSnapshot = result.scoreSnapshot || {};
-      var grossTotal=0, holeCount=0;
+      if (!Object.keys(scores).length) return;
+      var fullHdcp = (p.ghin && p.ghin !== '') ? nineHoleHdcp(p.ghin, side) : null;
+      var fullStrokeHoles = fullHdcp !== null ? getStrokeHoles(fullHdcp, holes) : new Set();
+      var grossTotal = 0, netTotal = 0, holeCount = 0;
       holes.forEach(function(h) {
-        var gross = getScoreForPlayerHole(scoreSnapshot, p, playerIndex, h.hole);
-        if(gross===null || isNaN(gross)) return;
+        var key = p.id + '_' + h.hole;
+        var raw = scores[key];
+        var gross = (raw !== undefined && raw !== null && raw !== '') ? parseInt(raw) : null;
+        if (gross === null || isNaN(gross)) return;
         holeCount++;
         grossTotal += gross;
         ps.totalGross += gross;
         ps.totalHoles++;
+        var hasStroke = fullStrokeHoles.has(h.hole);
+        var net = fullHdcp !== null ? gross - (hasStroke ? 1 : 0) : gross;
+        netTotal += net;
+        ps.totalNet += net;
         ps.parDiffs.push(gross - h.par);
         var diff = gross - h.par;
-        if(diff <= -1) ps.birdies++;
-        else if(diff===0) ps.pars++;
-        else if(diff===1) ps.bogeys++;
-        else if(diff===2) ps.doubles++;
+        var netDiff = net - h.par;
+        if (diff <= -1) ps.birdies++;
+        else if (diff === 0) ps.pars++;
+        else if (diff === 1) ps.bogeys++;
+        else if (diff === 2) ps.doubles++;
         else ps.worse++;
-        if(!ps.holeScores[h.hole]) ps.holeScores[h.hole] = [];
+        if (netDiff <= -1) ps.netBirdies++;
+        if (!ps.holeScores[h.hole]) ps.holeScores[h.hole] = [];
         ps.holeScores[h.hole].push({gross:gross, par:h.par});
       });
-      if(holeCount > 0) {
+      if (holeCount > 0) {
         ps.roundsPlayed++;
-        if(grossTotal < ps.bestGross) ps.bestGross = grossTotal;
-        if(grossTotal > ps.worstGross) ps.worstGross = grossTotal;
+        if (grossTotal < ps.bestGross) ps.bestGross = grossTotal;
+        if (grossTotal > ps.worstGross) ps.worstGross = grossTotal;
+        if (ps.bestNet === undefined || netTotal < ps.bestNet) ps.bestNet = netTotal;
+        if (ps.worstNet === undefined || netTotal > ps.worstNet) ps.worstNet = netTotal;
       }
     });
   });
@@ -1839,6 +1852,8 @@ function buildStats() {
     const initials = p.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
     const bestG = p.bestGross!==Infinity?p.bestGross:'—';
     const worstG = p.worstGross!==-Infinity?p.worstGross:'—';
+    const bestN = (p.bestNet!==undefined&&p.bestNet!==Infinity)?p.bestNet:'—';
+    const worstN = (p.worstNet!==undefined&&p.worstNet!==-Infinity)?p.worstNet:'—';
     const maxBar = Math.max(p.birdies,p.pars,p.bogeys,p.doubles,p.worse,1);
     const cardId = 'psc_' + p.name.replace(/[^a-zA-Z0-9]/g,'_');
     const avgVsParNum = parseFloat(avgVsPar);
@@ -1879,15 +1894,17 @@ function buildStats() {
       '<div class="psc-stats-grid">' +
         '<div class="psc-stat"><div class="psc-stat-num">' + winPct + '%</div><div class="psc-stat-label">Win %</div></div>' +
         '<div class="psc-stat"><div class="psc-stat-num">' + avgGross + '</div><div class="psc-stat-label">Avg/Hole</div></div>' +
-        '<div class="psc-stat"><div class="psc-stat-num" style="color:var(--gold)">' + bestG + '</div><div class="psc-stat-label">Best Round</div></div>' +
+        '<div class="psc-stat"><div class="psc-stat-num" style="color:var(--gold)">' + bestG + '</div><div class="psc-stat-label">Best Gross</div></div>' +
         '<div class="psc-stat"><div class="psc-stat-num" style="color:' + avgVsParColor + '">' + avgVsParStr + '</div><div class="psc-stat-label">Avg vs Par</div></div>' +
       '</div>' +
       '<div class="psc-detail" id="' + cardId + '">' +
         '<div class="psc-detail-grid">' +
           '<div class="psc-detail-item"><span class="psc-detail-label">Rounds</span><span class="psc-detail-val">' + p.roundsPlayed + '</span></div>' +
           '<div class="psc-detail-item"><span class="psc-detail-label">Holes Played</span><span class="psc-detail-val">' + p.totalHoles + '</span></div>' +
-          '<div class="psc-detail-item"><span class="psc-detail-label">Best Round</span><span class="psc-detail-val" style="color:var(--gold)">' + bestG + '</span></div>' +
-          '<div class="psc-detail-item"><span class="psc-detail-label">Worst Round</span><span class="psc-detail-val">' + worstG + '</span></div>' +
+          '<div class="psc-detail-item"><span class="psc-detail-label">Best Gross</span><span class="psc-detail-val" style="color:var(--gold)">' + bestG + '</span></div>' +
+          '<div class="psc-detail-item"><span class="psc-detail-label">Worst Gross</span><span class="psc-detail-val" style="color:var(--red)">' + worstG + '</span></div>' +
+          '<div class="psc-detail-item"><span class="psc-detail-label">Best Net</span><span class="psc-detail-val" style="color:var(--green)">' + bestN + '</span></div>' +
+          '<div class="psc-detail-item"><span class="psc-detail-label">Worst Net</span><span class="psc-detail-val">' + worstN + '</span></div>' +
           '<div class="psc-detail-item"><span class="psc-detail-label">Birdies/Eagles</span><span class="psc-detail-val" style="color:var(--gold)">' + p.birdies + '</span></div>' +
           '<div class="psc-detail-item"><span class="psc-detail-label">Pars</span><span class="psc-detail-val" style="color:var(--green)">' + p.pars + '</span></div>' +
           '<div class="psc-detail-item"><span class="psc-detail-label">Bogeys</span><span class="psc-detail-val">' + p.bogeys + '</span></div>' +
