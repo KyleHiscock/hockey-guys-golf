@@ -741,7 +741,30 @@ function buildDashboard() {
       </div>
     </div>
     <div class="dashboard-grid dashboard-grid-two">
-      <div class="dash-card"><div class="dash-label">Current #1 Seed</div><div class="dash-value">${leader ? leader.name : 'TBD'}</div><div class="dash-sub">${leader ? `${leader.w}-${leader.l} · ${leader.holesWon || 0} holes won` : 'No matches yet'}</div></div>
+      <div class="dash-card league-leaders-card">
+        <div class="dash-label">League Leaders</div>
+        ${(function() {
+          if (typeof computePlayerStats !== 'function') return '<div class="dash-sub" style="margin-top:8px;">Leaders will appear after Week 1 scores are entered.</div>';
+          const players = computePlayerStats();
+          const list = Object.values(players).filter(function(p){ return p.roundsPlayed > 0; });
+          if (!list.length) return '<div class="dash-sub" style="margin-top:8px;">Leaders will appear after Week 1 scores are entered.</div>';
+          const minGross = Math.min.apply(null, list.map(function(p){ return p.totalGross / p.roundsPlayed; }));
+          const lowGross = list.filter(function(p){ return Math.abs((p.totalGross/p.roundsPlayed)-minGross)<0.001; }).map(function(p){return p.name;}).join(' & ');
+          const withNet = list.filter(function(p){ return (p.totalNet||0)>0; });
+          var lowNet = '—'; var minNet = null;
+          if (withNet.length) {
+            minNet = Math.min.apply(null, withNet.map(function(p){ return p.totalNet/p.roundsPlayed; }));
+            lowNet = withNet.filter(function(p){ return Math.abs((p.totalNet/p.roundsPlayed)-minNet)<0.001; }).map(function(p){return p.name;}).join(' & ');
+          }
+          const maxBirdies = Math.max.apply(null, list.map(function(p){ return p.netBirdies||0; }));
+          const mostBirdies = maxBirdies > 0 ? list.filter(function(p){ return (p.netBirdies||0)===maxBirdies; }).map(function(p){return p.name;}).join(' & ') : '—';
+          return '<div class="leaders-strip">' +
+            '<div class="leader-row"><span class="leader-cat">Low Gross</span><span class="leader-val">' + (minGross!==null?minGross.toFixed(1):'—') + '</span><span class="leader-name-sm">' + lowGross + '</span></div>' +
+            '<div class="leader-row"><span class="leader-cat">Low Net</span><span class="leader-val">' + (minNet!==null?minNet.toFixed(1):'—') + '</span><span class="leader-name-sm">' + lowNet + '</span></div>' +
+            '<div class="leader-row"><span class="leader-cat">Net Birdies</span><span class="leader-val">' + (maxBirdies>0?maxBirdies:'—') + '</span><span class="leader-name-sm">' + mostBirdies + '</span></div>' +
+          '</div>';
+        })()}
+      </div>
       <div class="dash-card ice latest-results-card" id="latest-result-card">
         <div class="dash-label" id="lr-label">${latestLabel}</div>
         <div id="lr-score" class="dash-value">${latestScore}</div>
