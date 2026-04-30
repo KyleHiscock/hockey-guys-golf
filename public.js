@@ -702,6 +702,7 @@ function buildDashboard() {
   const latestPlayers = firstLatest ? renderLatestPlayerTotals(firstLatest) : '';
   const latestStrip = latestInfo.results.length ? renderLatestResultsStrip(latestInfo.results, 0) : '';
 
+  try {
   container.innerHTML = `
     <div class="dashboard-panel update-card">
       <div class="update-icon">📣</div>
@@ -729,6 +730,7 @@ function buildDashboard() {
     <div class="dashboard-panel playoff-dashboard"><div class="panel-title">If Playoffs Started Today</div><div class="dash-empty" style="margin-bottom:10px">Opening-round matchups based on current standings. If teams have the same record, total holes won is the standings tiebreaker. Teams reseed after each round.</div><div id="playoff-picture-container"></div></div>`;
   buildPlayoffPicture();
   initLatestResultCarousel();
+  } catch(e) { console.error('buildDashboard error:', e); }
 }
 
 var _lrTimer = null;
