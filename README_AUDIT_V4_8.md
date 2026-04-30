@@ -1,39 +1,21 @@
-# HGGL 2026 — Audited v4.8 Package
+# HGGL audited package v4.8.1
 
-Upload these clean filenames to the GitHub Pages repository root:
+This package updates the audited v4.8 files with the admin API key requirement restored.
 
-- `index.html`
-- `admin.html`
-- `public.js`
-- `admin.js`
-- `polish.js`
-- `style.css`
-- `theme-polished.css`
+## Key fixes
 
-## What was audited/fixed
+- Admin API key field is labeled required, not optional.
+- Admin login now blocks access if the API key field is blank.
+- The saved admin key fallback was removed from `getAdminKey()`.
+- `saveAdminKey()` now rejects blank keys instead of saving an empty string.
+- Admin script cache-busting is bumped to `v=4.8.1`.
+- Scorecard stroke-dot and stroke-label updates from the recent public.js remain included.
+- Admin scorecard/stroke calculations remain aligned with public scorecard calculations.
 
-- `public.js` is based on the newer `recent public.js`, not the older `public(18).js`.
-- The newer public scorecard feature is included:
-  - Multiple stroke dots on holes when a player gets more than one stroke on that hole.
-  - Player stroke badge in the expanded scorecard row.
-- Public scorecard/net calculations now use the full stroke count, not just a yes/no stroke flag.
-- `admin.js` was brought into alignment with the newer public handicap/stroke logic:
-  - 90% adjusted relative strokes.
-  - Stroke holes stored as a hole-to-stroke-count map.
-  - Admin live scorecard, match status, tiebreakers, hole-win totals, result summaries, and expanded scorecards now use full stroke counts.
-- Admin score entry still keeps the focus/Enter-key improvements from the uploaded admin file.
-- HTML cache-busting was updated from `v=4.7` to `v=4.8-audit`.
+## Validation
 
-## Validation performed
+- `node --check admin.js` passed.
+- `node --check public.js` passed.
+- `node --check polish.js` passed.
 
-- JavaScript syntax check passed for:
-  - `public.js`
-  - `admin.js`
-  - `polish.js`
-- Public/admin HTML script references point to clean production filenames.
-- No duplicate HTML IDs were found in the uploaded public/admin pages.
-- All inline `onclick` function names used by the public/admin HTML were found in the loaded JS files.
-
-## Upload note
-
-Replace the existing root files with these clean names. Do not upload the parenthetical filenames such as `public(18).js`, `admin(16).js`, or `index(13).html`.
+Upload the root files from this package to GitHub Pages, replacing the existing clean filenames.

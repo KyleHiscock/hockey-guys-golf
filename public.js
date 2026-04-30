@@ -681,7 +681,8 @@ function buildTicker() {
   if (RESULTS.length) {
     const latestWeek = Math.max.apply(null, RESULTS.map(function(r){ return parseInt(r.week)||0; }));
     RESULTS.filter(function(r){ return parseInt(r.week)===latestWeek; }).forEach(function(r) {
-      items.push('<span class="ticker-item ticker-result">&#x26F3; Wk'+latestWeek+': <strong>'+(r.winner||'Tied')+'</strong> '+(r.matchResult||'')+'</span>');
+      var displayInfo = getDisplayedResultInfo(r);
+      items.push('<span class="ticker-item ticker-result">&#x26F3; Wk'+latestWeek+': <strong>'+(displayInfo.winner||'Tied')+'</strong> '+displayInfo.matchResult+'</span>');
     });
   }
   if (typeof SKINS_DATA !== 'undefined' && SKINS_DATA.length) {
@@ -775,7 +776,7 @@ function buildDashboard() {
   const safeNote = escapeLeagueHtml(noteText).replace(/\n/g, '<br>');
   const latestLabel = latestInfo.week ? 'Latest Results · Week ' + latestInfo.week : 'Latest Results';
   const latestSub = firstLatest ? firstLatest.team1 + ' vs ' + firstLatest.team2 : 'Check back after Week 1';
-  const latestScore = firstLatest ? firstLatest.matchResult : 'TBD';
+  const latestScore = firstLatest ? getDisplayedMatchResult(firstLatest) : 'TBD';
   const latestPlayers = firstLatest ? renderLatestPlayerTotals(firstLatest) : '';
   const latestStrip = latestInfo.results.length ? renderLatestResultsStrip(latestInfo.results, 0) : '';
 
@@ -823,8 +824,9 @@ function getLatestResultsInfo() {
 
 function renderLatestResultsStrip(results, activeIndex) {
   return results.map(function(r, i){
-    const winnerName = r.winner || '';
-    const shortScore = escapeLeagueHtml(r.matchResult || 'Final');
+    const displayInfo = getDisplayedResultInfo(r);
+    const winnerName = displayInfo.winner || '';
+    const shortScore = escapeLeagueHtml(displayInfo.matchResult);
     const label = escapeLeagueHtml((r.team1 || '') + ' vs ' + (r.team2 || ''));
     return '<button class="latest-result-chip' + (i === activeIndex ? ' active' : '') + '" onclick="jumpLr(' + i + ')">' +
       '<span class="latest-chip-score">' + shortScore + '</span>' +
@@ -851,7 +853,7 @@ function showLatestResult(results, index) {
   const totals = document.getElementById('lr-player-totals');
   const strip = document.getElementById('lr-scroll');
   const dots = document.getElementById('lr-dots');
-  if(score) score.textContent = r.matchResult || 'Final';
+  if(score) score.textContent = getDisplayedMatchResult(r);
   if(teams) teams.textContent = (r.team1 || '') + ' vs ' + (r.team2 || '');
   if(totals) totals.innerHTML = renderLatestPlayerTotals(r);
   if(strip) strip.innerHTML = renderLatestResultsStrip(results, _lrIndex);
@@ -1009,6 +1011,62 @@ function renderPlayerScoreSummary(result) {
 }
 
 
+function calcDisplayedResultFromSnapshot(r) {
+  var snap = getResultSnapshotPlayers(r);
+  var scores = r && r.scoreSnapshot ? r.scoreSnapshot : {};
+  if (!Array.isArray(snap) || snap.length < 4 || !scores || !Object.keys(scores).length) return null;
+
+  var side = String(r.side || '').toLowerCase().indexOf('back') >= 0 ? 'back' : 'front';
+  var holes = side === 'front' ? COURSE.front : COURSE.back;
+  var strokes = calcPlayerStrokes(snap, side);
+  var strokeSets = snap.map(function(p, i) { return getStrokeHoles(strokes[i], holes); });
+  var status = 0;
+  var holesWithScores = 0;
+
+  holes.forEach(function(h) {
+    var t1nets = [0,1].map(function(pi) {
+      var g = getScoreForPlayerHole(scores, snap[pi], pi, h.hole);
+      if (g === null || isNaN(g)) return null;
+      return g - holeStrokeCount(strokeSets[pi], h.hole);
+    }).filter(function(v) { return v !== null; });
+    var t2nets = [2,3].map(function(pi) {
+      var g = getScoreForPlayerHole(scores, snap[pi], pi, h.hole);
+      if (g === null || isNaN(g)) return null;
+      return g - holeStrokeCount(strokeSets[pi], h.hole);
+    }).filter(function(v) { return v !== null; });
+
+    if (!t1nets.length || !t2nets.length) return;
+    holesWithScores++;
+    var t1best = Math.min.apply(null, t1nets);
+    var t2best = Math.min.apply(null, t2nets);
+    if (t1best < t2best) status++;
+    else if (t2best < t1best) status--;
+  });
+
+  // Only override the saved label when every hole was scored and the final
+  // 9-hole margin is clear. Tied matches keep the saved tiebreaker label.
+  if (holesWithScores !== holes.length || status === 0) return null;
+  return {
+    matchResult: Math.abs(status) + ' UP',
+    winner: status > 0 ? r.team1 : r.team2,
+    matchStatus: status,
+    holesWithScores: holesWithScores
+  };
+}
+
+function getDisplayedResultInfo(r) {
+  var recalculated = calcDisplayedResultFromSnapshot(r);
+  return {
+    matchResult: recalculated && recalculated.matchResult ? recalculated.matchResult : (r.matchResult || 'Final'),
+    winner: recalculated && recalculated.winner ? recalculated.winner : (r.winner || null)
+  };
+}
+
+function getDisplayedMatchResult(r) {
+  return getDisplayedResultInfo(r).matchResult;
+}
+
+
 // ── RESULTS ──
 function buildResults() {
   const container = document.getElementById('results-container');
@@ -1027,19 +1085,21 @@ function buildResults() {
     const completion = weekInfo ? getWeekCompletionInfo(weekInfo) : { completed: weekData.length, total: weekData.length, isComplete: true };
     const shouldOpen = !completion.isComplete;
     const summaryScores = weekData.map(function(r){
-      const t1w = r.winner === r.team1;
-      const t2w = r.winner === r.team2;
-      return (t1w?'<strong>':'')+escapeLeagueHtml(r.team1)+(t1w?'</strong>':'')+' '+escapeLeagueHtml(r.matchResult)+' '+(t2w?'<strong>':'')+escapeLeagueHtml(r.team2)+(t2w?'</strong>':'');
+      const displayInfo = getDisplayedResultInfo(r);
+      const t1w = displayInfo.winner === r.team1;
+      const t2w = displayInfo.winner === r.team2;
+      return (t1w?'<strong>':'')+escapeLeagueHtml(r.team1)+(t1w?'</strong>':'')+' '+escapeLeagueHtml(displayInfo.matchResult)+' '+(t2w?'<strong>':'')+escapeLeagueHtml(r.team2)+(t2w?'</strong>':'');
     }).join(' &nbsp;|&nbsp; ');
     const cards = weekData.map(function(r){
-      const t1w = r.winner === r.team1;
-      const t2w = r.winner === r.team2;
+      const displayInfo = getDisplayedResultInfo(r);
+      const t1w = displayInfo.winner === r.team1;
+      const t2w = displayInfo.winner === r.team2;
       const playerSummary = renderPlayerScoreSummary(r);
       return '<div class="result-card">' +
         '<div class="result-teams">' +
         '<div class="result-team">' + logoImg(r.team1,'result-logo','result-placeholder') +
         '<span class="result-name'+(t1w?' winner':'')+'">'+escapeLeagueHtml(r.team1)+'</span></div>' +
-        '<div class="result-score-block"><div class="result-matchplay">'+escapeLeagueHtml(r.matchResult)+'</div><div class="result-side">'+escapeLeagueHtml(r.side)+'</div></div>' +
+        '<div class="result-score-block"><div class="result-matchplay">'+escapeLeagueHtml(displayInfo.matchResult)+'</div><div class="result-side">'+escapeLeagueHtml(r.side)+'</div></div>' +
         '<div class="result-team right"><span class="result-name'+(t2w?' winner':'')+'">'+escapeLeagueHtml(r.team2)+'</span>' +
         logoImg(r.team2,'result-logo','result-placeholder')+'</div></div>' +
         '<div class="result-detail">'+escapeLeagueHtml(r.playerLine)+'</div>' +
@@ -1177,7 +1237,7 @@ function buildResultManager() {
     sel.innerHTML = '<option value="">No saved results yet</option>';
     return;
   }
-  sel.innerHTML = '<option value="">Select saved result</option>' + RESULTS.map((r,i)=>`<option value="${i}">Week ${r.week} · ${r.team1} vs ${r.team2} · ${r.matchResult}</option>`).join('');
+  sel.innerHTML = '<option value="">Select saved result</option>' + RESULTS.map((r,i)=>`<option value="${i}">Week ${r.week} · ${r.team1} vs ${r.team2} · ${getDisplayedMatchResult(r)}</option>`).join('');
 }
 
 function removeResultAt(index) {
@@ -1346,13 +1406,14 @@ function calcTieBreakerWinner(players, strokeSets, holes) {
 
 // Returns { matchStatus, matchOver, matchResult, winner(index 0=t1,1=t2,null=tie), holesWithScores }
 function calcMatchState(players, strokeSets, holes) {
-  let matchStatus = 0; // positive = team1 up
+  let officialStatus = 0; // final hole-by-hole status if all 9 holes are scored; positive = team1 up
+  let liveStatus = 0;     // match-play status before any early close; positive = team1 up
   let matchOver = false;
   let matchOverResult = '';
+  let lockedWinnerStatus = 0;
   let holesWithScores = 0;
 
   for(let hi = 0; hi < holes.length; hi++) {
-    if(matchOver) break;
     const h = holes[hi];
     const t1nets = [0,1].map(pi => {
       const key = `${players[pi].id}_${h.hole}`;
@@ -1365,42 +1426,53 @@ function calcMatchState(players, strokeSets, holes) {
       return g !== null ? g - (holeStrokeCount(strokeSets[pi], h.hole)) : null;
     }).filter(s => s !== null);
 
-    // Only score the hole if at least one player from each team has a score
+    // Only score the hole if at least one player from each team has a score.
     if(!t1nets.length || !t2nets.length) continue;
 
     holesWithScores++;
     const t1best = Math.min(...t1nets);
     const t2best = Math.min(...t2nets);
-    if(t1best < t2best) matchStatus++;
-    else if(t2best < t1best) matchStatus--;
+    const holeDelta = t1best < t2best ? 1 : (t2best < t1best ? -1 : 0);
 
-    const holesLeft = holes.length - (hi + 1);
-    if(Math.abs(matchStatus) > holesLeft) {
-      matchOver = true;
-      matchOverResult = `${Math.abs(matchStatus)}&${holesLeft}`;
+    // Always keep the full 9-hole score status. This is what should display
+    // when all holes were actually scored, even if the match was mathematically
+    // closed earlier.
+    officialStatus += holeDelta;
+
+    // Separately keep the traditional early-close status for genuinely partial
+    // matches or live/in-progress scoring.
+    if(!matchOver) {
+      liveStatus += holeDelta;
+      const holesLeft = holes.length - (hi + 1);
+      if(Math.abs(liveStatus) > holesLeft) {
+        matchOver = true;
+        lockedWinnerStatus = liveStatus;
+        matchOverResult = `${Math.abs(liveStatus)}&${holesLeft}`;
+      }
     }
   }
 
   let matchResult = '', winner = null;
-  if(matchOver) {
-    matchResult = matchOverResult;
-    winner = matchStatus > 0 ? 0 : 1;
-  } else if(holesWithScores === holes.length) {
-    // All 9 holes scored
-    if(matchStatus === 0) {
+  if(holesWithScores === holes.length) {
+    // All 9 holes were scored. Display the actual final 9-hole margin.
+    if(officialStatus === 0) {
       const tb = calcTieBreakerWinner(players, strokeSets, holes);
       matchResult = tb.label;
       winner = tb.winner;
-      return {matchStatus, matchOver, matchResult, winner, holesWithScores, tieBreaker: tb};
+      return {matchStatus: officialStatus, matchOver, matchResult, winner, holesWithScores, tieBreaker: tb};
     }
-    else { matchResult = `${Math.abs(matchStatus)} UP`; winner = matchStatus > 0 ? 0 : 1; }
+    matchResult = `${Math.abs(officialStatus)} UP`;
+    winner = officialStatus > 0 ? 0 : 1;
+  } else if(matchOver) {
+    matchResult = matchOverResult;
+    winner = lockedWinnerStatus > 0 ? 0 : 1;
   } else {
     // In progress
-    if(matchStatus === 0) matchResult = holesWithScores > 0 ? 'AS (in progress)' : '';
-    else matchResult = `${Math.abs(matchStatus)} ${matchStatus > 0 ? 'UP T1' : 'UP T2'} (thru ${holesWithScores})`;
+    if(liveStatus === 0) matchResult = holesWithScores > 0 ? 'AS (in progress)' : '';
+    else matchResult = `${Math.abs(liveStatus)} ${liveStatus > 0 ? 'UP T1' : 'UP T2'} (thru ${holesWithScores})`;
   }
 
-  return {matchStatus, matchOver, matchResult, winner, holesWithScores};
+  return {matchStatus: officialStatus, matchOver, matchResult, winner, holesWithScores};
 }
 
 function renderScorecard() {
@@ -2197,7 +2269,7 @@ function buildScorecardHTML(r) {
     else { txt = 'AS'; color = 'color:var(--muted)'; }
     html += '<td style="border:1px solid rgba(255,255,255,0.1);padding:5px 3px;text-align:center;font-size:11px;font-weight:700;' + color + ';">' + txt + '</td>';
   });
-  html += '<td style="border:1px solid rgba(255,255,255,0.1);padding:5px 3px;text-align:center;font-size:11px;font-weight:800;color:var(--gold);">' + r.matchResult + '</td>';
+  html += '<td style="border:1px solid rgba(255,255,255,0.1);padding:5px 3px;text-align:center;font-size:11px;font-weight:800;color:var(--gold);">' + getDisplayedMatchResult(r) + '</td>';
   html += '</tr>';
 
   html += '</table></div>';
