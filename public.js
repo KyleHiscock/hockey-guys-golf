@@ -89,13 +89,17 @@ function nineHoleHdcp(ghinIndex, side) {
 // Strokes each player gets relative to the lowest hdcp player
 // Returns array of [strokes_p1a, strokes_p1b, strokes_p2a, strokes_p2b]
 function calcPlayerStrokes(players, side) {
+  // Step 1: Calculate each player's 9-hole course handicap using USGA formula
   const hdcps = players.map(p => {
     const g = parseFloat(p.ghin);
     return isNaN(g) ? null : nineHoleHdcp(g, side);
   });
-  const valid = hdcps.filter(h => h !== null);
+  // Step 2: Apply 90% for 2-man best ball, round to nearest whole number
+  const adjusted = hdcps.map(h => h !== null ? Math.round(h * 0.9) : null);
+  // Step 3: Low handicap gets 0, others get the difference
+  const valid = adjusted.filter(h => h !== null);
   const minH = valid.length ? Math.min(...valid) : 0;
-  return hdcps.map(h => h !== null ? Math.max(0, h - minH) : 0);
+  return adjusted.map(h => h !== null ? Math.max(0, h - minH) : 0);
 }
 
 // Which holes on this 9 get strokes (hardest = lowest hcp number)
