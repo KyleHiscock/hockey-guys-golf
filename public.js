@@ -1048,7 +1048,7 @@ function calcDisplayedResultFromSnapshot(r) {
 
     if (!matchOver) {
       var holesLeft = holes.length - (hi + 1);
-      if (Math.abs(status) > holesLeft) {
+      if (holesLeft > 0 && Math.abs(status) > holesLeft) {
         matchOver = true;
         lockedWinnerStatus = status;
         matchOverResult = Math.abs(status) + '&' + holesLeft;
@@ -1467,7 +1467,7 @@ function calcMatchState(players, strokeSets, holes) {
     if(!matchOver) {
       liveStatus += holeDelta;
       const holesLeft = holes.length - (hi + 1);
-      if(Math.abs(liveStatus) > holesLeft) {
+      if(holesLeft > 0 && Math.abs(liveStatus) > holesLeft) {
         matchOver = true;
         lockedWinnerStatus = liveStatus;
         matchOverResult = `${Math.abs(liveStatus)}&${holesLeft}`;
