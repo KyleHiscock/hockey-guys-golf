@@ -99,11 +99,33 @@ function calcPlayerStrokes(players, side) {
 }
 
 // Which holes on this 9 get strokes (hardest = lowest hcp number)
+// Returns a Map of hole -> number of strokes given on that hole
+// e.g. 18 strokes on 9 holes = 2 strokes on every hole
+// e.g. 11 strokes = 2 strokes on 2 hardest holes, 1 stroke on next 9
 function getStrokeHoles(numStrokes, holes) {
+  if (numStrokes <= 0) return new Map();
   const sorted = [...holes].sort((a,b) => a.hcp - b.hcp);
-  const set = new Set();
-  for(let i = 0; i < Math.min(numStrokes, 9); i++) set.add(sorted[i].hole);
-  return set;
+  const map = new Map();
+  // Full passes: each pass gives 1 stroke to all 9 holes
+  const fullPasses = Math.floor(numStrokes / 9);
+  const remainder = numStrokes % 9;
+  sorted.forEach(function(h) { if (fullPasses > 0) map.set(h.hole, fullPasses); });
+  // Remaining strokes go to the hardest holes
+  for (var i = 0; i < remainder; i++) {
+    map.set(sorted[i].hole, (map.get(sorted[i].hole) || 0) + 1);
+  }
+  return map;
+}
+
+// Backwards-compatible helper: check if a hole gets any strokes
+function holeGetsStroke(strokeMap, holeNum) {
+  return strokeMap instanceof Map ? (strokeMap.get(holeNum) || 0) > 0 : strokeMap.has(holeNum);
+}
+
+// Get stroke count for a hole
+function holeStrokeCount(strokeMap, holeNum) {
+  if (strokeMap instanceof Map) return strokeMap.get(holeNum) || 0;
+  return strokeMap.has(holeNum) ? 1 : 0;
 }
 
 // ── LOGO HELPER ──
@@ -904,7 +926,7 @@ function getResultPlayerTotals(r) {
       const g = getScoreForPlayerHole(scores, p, pi, h.hole);
       if (g === null || isNaN(g)) return;
       gross += g;
-      net += g - (strokeSets[pi].has(h.hole) ? 1 : 0);
+      net += g - (holeStrokeCount(strokeSets[pi], h.hole));
       holeCount++;
     });
     return {
@@ -1280,12 +1302,12 @@ function calcMatchState(players, strokeSets, holes) {
     const t1nets = [0,1].map(pi => {
       const key = `${players[pi].id}_${h.hole}`;
       const g = scorecardScores[key] ? parseInt(scorecardScores[key]) : null;
-      return g !== null ? g - (strokeSets[pi].has(h.hole) ? 1 : 0) : null;
+      return g !== null ? g - (holeStrokeCount(strokeSets[pi], h.hole)) : null;
     }).filter(s => s !== null);
     const t2nets = [2,3].map(pi => {
       const key = `${players[pi].id}_${h.hole}`;
       const g = scorecardScores[key] ? parseInt(scorecardScores[key]) : null;
-      return g !== null ? g - (strokeSets[pi].has(h.hole) ? 1 : 0) : null;
+      return g !== null ? g - (holeStrokeCount(strokeSets[pi], h.hole)) : null;
     }).filter(s => s !== null);
 
     // Only score the hole if at least one player from each team has a score
@@ -1363,7 +1385,7 @@ function renderScorecard() {
     let tds = '';
     holes.forEach(h => {
       const key = `${p.id}_${h.hole}`;
-      const hasStroke = strokeSets[pi].has(h.hole);
+      const hasStroke = holeGetsStroke(strokeSets[pi], h.hole);
       const gross = scorecardScores[key] ? parseInt(scorecardScores[key]) : null;
       if(gross !== null) {
         netTotal += gross - (hasStroke ? 1 : 0);
@@ -1393,8 +1415,8 @@ function renderScorecard() {
   let runningOver = false;
   holes.forEach((h, hi) => {
     if(runningOver) { html+=`<td></td>`; return; }
-    const t1nets = [0,1].map(pi=>{const key=`${players[pi].id}_${h.hole}`;const g=scorecardScores[key]?parseInt(scorecardScores[key]):null;return g!==null?g-(strokeSets[pi].has(h.hole)?1:0):null;}).filter(s=>s!==null);
-    const t2nets = [2,3].map(pi=>{const key=`${players[pi].id}_${h.hole}`;const g=scorecardScores[key]?parseInt(scorecardScores[key]):null;return g!==null?g-(strokeSets[pi].has(h.hole)?1:0):null;}).filter(s=>s!==null);
+    const t1nets = [0,1].map(pi=>{const key=`${players[pi].id}_${h.hole}`;const g=scorecardScores[key]?parseInt(scorecardScores[key]):null;return g!==null?g-(holeGetsStroke(strokeSets[pi], h.hole)?1:0):null;}).filter(s=>s!==null);
+    const t2nets = [2,3].map(pi=>{const key=`${players[pi].id}_${h.hole}`;const g=scorecardScores[key]?parseInt(scorecardScores[key]):null;return g!==null?g-(holeGetsStroke(strokeSets[pi], h.hole)?1:0):null;}).filter(s=>s!==null);
     if(!t1nets.length||!t2nets.length){ html+=`<td class="ev">·</td>`; return; }
     const t1b=Math.min(...t1nets), t2b=Math.min(...t2nets);
     if(t1b<t2b){runningStatus++;html+=`<td class="up">▲</td>`;}
@@ -1746,8 +1768,8 @@ function computePlayerStats() {
         grossTotal += gross;
         ps.totalGross += gross;
         ps.totalHoles++;
-        var hasStroke = fullStrokeHoles.has(h.hole);
-        var net = fullHdcp !== null ? gross - (hasStroke ? 1 : 0) : gross;
+        var strokeCount = fullHdcp !== null ? holeStrokeCount(fullStrokeHoles, h.hole) : 0;
+        var net = gross - strokeCount;
         netTotal += net;
         ps.totalNet += net;
         ps.parDiffs.push(gross - h.par);
@@ -2014,7 +2036,7 @@ function buildScorecardHTML(r) {
     var nets = playerIdxs.map(function(pi) {
       var g = getScoreForPlayerHole(scores, snap[pi], pi, hole.hole);
       if (g === null || isNaN(g)) return null;
-      return g - (strokeSets[pi].has(hole.hole) ? 1 : 0);
+      return g - (holeStrokeCount(strokeSets[pi], hole.hole));
     }).filter(function(n) { return n !== null; });
     return nets.length ? Math.min.apply(null, nets) : null;
   }
@@ -2062,9 +2084,9 @@ function buildScorecardHTML(r) {
     var cells = holes.map(function(h) {
       var g = getScoreForPlayerHole(scores, p, pi, h.hole);
       if (g !== null && !isNaN(g)) { grossTotal += g; hasAny = true; }
-      var hasStroke = strokeSets[pi].has(h.hole);
+      var strokeCnt = holeStrokeCount(strokeSets[pi], h.hole);
       var sc = scoreColor(g, h.par);
-      var dot = hasStroke ? '<span style="color:var(--gold);font-size:8px;vertical-align:super;">●</span>' : '';
+      var dot = strokeCnt > 0 ? '<span style="color:var(--gold);font-size:8px;vertical-align:super;">' + '●'.repeat(Math.min(strokeCnt, 3)) + '</span>' : '';
       return '<td style="border:1px solid rgba(255,255,255,0.1);padding:5px 3px;text-align:center;font-size:13px;font-weight:600;' + sc + '">' + (g !== null && !isNaN(g) ? g : '—') + dot + '</td>';
     });
     html += '<tr style="background:' + teamColor + ';">';
@@ -2078,7 +2100,7 @@ function buildScorecardHTML(r) {
     var netCells = holes.map(function(h) {
       var g = getScoreForPlayerHole(scores, p, pi, h.hole);
       if (g === null || isNaN(g)) return '<td style="border:1px solid rgba(255,255,255,0.1);padding:3px;text-align:center;font-size:11px;color:var(--muted);">—</td>';
-      var net = g - (strokeSets[pi].has(h.hole) ? 1 : 0);
+      var net = g - (holeStrokeCount(strokeSets[pi], h.hole));
       netTotal += net; hasNet = true;
       var sc = scoreColor(net, h.par);
       return '<td style="border:1px solid rgba(255,255,255,0.1);padding:3px;text-align:center;font-size:11px;' + sc + '">' + net + '</td>';
