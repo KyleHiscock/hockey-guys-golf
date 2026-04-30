@@ -95,17 +95,33 @@ function calcPlayerStrokes(players, side) {
     const g = parseFloat(p.ghin);
     return isNaN(g) ? null : nineHoleHdcp(g, side);
   });
-  const valid = hdcps.filter(h => h !== null);
+  const adjusted = hdcps.map(h => h !== null ? Math.round(h * 0.9) : null);
+  const valid = adjusted.filter(h => h !== null);
   const minH = valid.length ? Math.min(...valid) : 0;
-  return hdcps.map(h => h !== null ? Math.max(0, h - minH) : 0);
+  return adjusted.map(h => h !== null ? Math.max(0, h - minH) : 0);
 }
 
-// Which holes on this 9 get strokes (hardest = lowest hcp number)
+// Which holes on this 9 get strokes — returns Map of hole -> stroke count
 function getStrokeHoles(numStrokes, holes) {
+  if (numStrokes <= 0) return new Map();
   const sorted = [...holes].sort((a,b) => a.hcp - b.hcp);
-  const set = new Set();
-  for(let i = 0; i < Math.min(numStrokes, 9); i++) set.add(sorted[i].hole);
-  return set;
+  const map = new Map();
+  const fullPasses = Math.floor(numStrokes / 9);
+  const remainder = numStrokes % 9;
+  sorted.forEach(function(h) { if (fullPasses > 0) map.set(h.hole, fullPasses); });
+  for (var i = 0; i < remainder; i++) {
+    map.set(sorted[i].hole, (map.get(sorted[i].hole) || 0) + 1);
+  }
+  return map;
+}
+
+function holeGetsStroke(strokeMap, holeNum) {
+  return strokeMap instanceof Map ? (strokeMap.get(holeNum) || 0) > 0 : strokeMap.has(holeNum);
+}
+
+function holeStrokeCount(strokeMap, holeNum) {
+  if (strokeMap instanceof Map) return strokeMap.get(holeNum) || 0;
+  return strokeMap.has(holeNum) ? 1 : 0;
 }
 
 // ── LOGO HELPER ──
@@ -539,15 +555,11 @@ async function postLeagueAction(action, payload = {}) {
 }
 
 function getAdminKey() {
-  return sessionStorage.getItem('hggl2026_admin_key') || '';
+  return localStorage.getItem('hggl2026_admin_key') || 'hggl2026-hiscock-drexler';
 }
 
 function saveAdminKey(key) {
-  sessionStorage.setItem('hggl2026_admin_key', String(key || '').trim());
-}
-
-function clearAdminKey() {
-  sessionStorage.removeItem('hggl2026_admin_key');
+  localStorage.setItem('hggl2026_admin_key', String(key || '').trim());
 }
 
 async function initLeagueSite() {
@@ -924,7 +936,7 @@ function getResultPlayerTotals(r) {
       const g = getScoreForPlayerHole(scores, p, pi, h.hole);
       if (g === null || isNaN(g)) return;
       gross += g;
-      net += g - (strokeSets[pi].has(h.hole) ? 1 : 0);
+      net += g - (holeStrokeCount(strokeSets[pi], h.hole));
       holeCount++;
     });
     return {
@@ -1218,7 +1230,7 @@ function getPlayerGross(player, hole) {
 function getPlayerNet(player, strokeSet, hole) {
   const gross = getPlayerGross(player, hole);
   if (gross === null) return null;
-  return gross - (strokeSet.has(hole.hole) ? 1 : 0);
+  return gross - (holeStrokeCount(strokeSet, hole.hole));
 }
 
 function getTeamBestNet(players, strokeSets, indexes, hole) {
@@ -1323,12 +1335,12 @@ function calcMatchState(players, strokeSets, holes) {
     const t1nets = [0,1].map(pi => {
       const key = `${players[pi].id}_${h.hole}`;
       const g = scorecardScores[key] ? parseInt(scorecardScores[key]) : null;
-      return g !== null ? g - (strokeSets[pi].has(h.hole) ? 1 : 0) : null;
+      return g !== null ? g - (holeStrokeCount(strokeSets[pi], h.hole)) : null;
     }).filter(s => s !== null);
     const t2nets = [2,3].map(pi => {
       const key = `${players[pi].id}_${h.hole}`;
       const g = scorecardScores[key] ? parseInt(scorecardScores[key]) : null;
-      return g !== null ? g - (strokeSets[pi].has(h.hole) ? 1 : 0) : null;
+      return g !== null ? g - (holeStrokeCount(strokeSets[pi], h.hole)) : null;
     }).filter(s => s !== null);
 
     // Only score the hole if at least one player from each team has a score.
@@ -1385,13 +1397,13 @@ function calcHoleWinTotals(players, strokeSets, holes) {
     const t1nets = [0,1].map(pi => {
       const key = `${players[pi].id}_${h.hole}`;
       const g = scorecardScores[key] ? parseInt(scorecardScores[key]) : null;
-      return g !== null ? g - (strokeSets[pi].has(h.hole) ? 1 : 0) : null;
+      return g !== null ? g - (holeStrokeCount(strokeSets[pi], h.hole)) : null;
     }).filter(s => s !== null);
 
     const t2nets = [2,3].map(pi => {
       const key = `${players[pi].id}_${h.hole}`;
       const g = scorecardScores[key] ? parseInt(scorecardScores[key]) : null;
-      return g !== null ? g - (strokeSets[pi].has(h.hole) ? 1 : 0) : null;
+      return g !== null ? g - (holeStrokeCount(strokeSets[pi], h.hole)) : null;
     }).filter(s => s !== null);
 
     if(!t1nets.length || !t2nets.length) return;
@@ -1442,16 +1454,17 @@ function renderScorecard() {
     let tds = '';
     holes.forEach(h => {
       const key = `${p.id}_${h.hole}`;
-      const hasStroke = strokeSets[pi].has(h.hole);
+      const strokeCnt = holeStrokeCount(strokeSets[pi], h.hole);
+      const hasStroke = strokeCnt > 0;
       const gross = scorecardScores[key] ? parseInt(scorecardScores[key]) : null;
       if(gross !== null) {
-        netTotal += gross - (hasStroke ? 1 : 0);
+        netTotal += gross - strokeCnt;
         netCount++;
       }
       tds += `<td>
         <input class="score-inp${hasStroke?' stroke':''}" type="number" inputmode="numeric" min="1" max="15"
           data-key="${key}" value="${scorecardScores[key]||''}">
-        ${hasStroke?'<span class="star">★</span>':''}
+        ${hasStroke?`<span class="star">${'●'.repeat(Math.min(strokeCnt,3))}</span>`:''}
       </td>`;
     });
 
@@ -1471,8 +1484,8 @@ function renderScorecard() {
   let runningOver = false;
   holes.forEach((h, hi) => {
     if(runningOver) { html+=`<td></td>`; return; }
-    const t1nets = [0,1].map(pi=>{const key=`${players[pi].id}_${h.hole}`;const g=scorecardScores[key]?parseInt(scorecardScores[key]):null;return g!==null?g-(strokeSets[pi].has(h.hole)?1:0):null;}).filter(s=>s!==null);
-    const t2nets = [2,3].map(pi=>{const key=`${players[pi].id}_${h.hole}`;const g=scorecardScores[key]?parseInt(scorecardScores[key]):null;return g!==null?g-(strokeSets[pi].has(h.hole)?1:0):null;}).filter(s=>s!==null);
+    const t1nets = [0,1].map(pi=>{const key=`${players[pi].id}_${h.hole}`;const g=scorecardScores[key]?parseInt(scorecardScores[key]):null;return g!==null?g-holeStrokeCount(strokeSets[pi], h.hole):null;}).filter(s=>s!==null);
+    const t2nets = [2,3].map(pi=>{const key=`${players[pi].id}_${h.hole}`;const g=scorecardScores[key]?parseInt(scorecardScores[key]):null;return g!==null?g-holeStrokeCount(strokeSets[pi], h.hole):null;}).filter(s=>s!==null);
     if(!t1nets.length||!t2nets.length){ html+=`<td class="ev">·</td>`; return; }
     const t1b=Math.min(...t1nets), t2b=Math.min(...t2nets);
     if(t1b<t2b){runningStatus++;html+=`<td class="up">▲</td>`;}
@@ -1654,40 +1667,22 @@ function removeLastResult() {
 function doLogin() {
   const name = document.getElementById('login-name').value.trim();
   const pass = document.getElementById('login-pass').value.trim();
-
-  const match = COMMISSIONERS.find(c =>
-    c.name.toLowerCase() === name.toLowerCase() && c.password === pass
-  );
-
-  if (match) {
-    const apiKeyField = document.getElementById('admin-api-key');
-    const enteredKey = apiKeyField ? apiKeyField.value.trim() : '';
-
-    if (!enteredKey) {
-      document.getElementById('login-error').textContent = '❌ Admin API key required';
-      document.getElementById('login-error').style.display = 'block';
-      return;
-    }
-
-    saveAdminKey(enteredKey);
+  const match = COMMISSIONERS.find(c => c.name.toLowerCase() === name.toLowerCase() && c.password === pass);
+  if(match) {
     currentUser = match.name;
-
+    const apiKeyField = document.getElementById('admin-api-key');
+    if(apiKeyField && apiKeyField.value.trim()) saveAdminKey(apiKeyField.value.trim());
     document.getElementById('login-panel').style.display = 'none';
     document.getElementById('commissioner-panel').style.display = 'block';
     document.getElementById('comm-user').textContent = '👋 Welcome, ' + match.name;
     document.getElementById('login-error').style.display = 'none';
-
     document.getElementById('login-pass').value = '';
-    if (apiKeyField) apiKeyField.value = '';
-
     fetchLeagueDataFromSheets(true).then(function() {
       buildEntrySelects();
     }).catch(function() {
       buildEntrySelects();
     });
-
   } else {
-    document.getElementById('login-error').textContent = '❌ Invalid commissioner name or password';
     document.getElementById('login-error').style.display = 'block';
   }
 }
@@ -2166,7 +2161,7 @@ function buildScorecardHTML(r) {
     var nets = playerIdxs.map(function(pi) {
       var g = getScoreForPlayerHole(scores, snap[pi], pi, hole.hole);
       if (g === null || isNaN(g)) return null;
-      return g - (strokeSets[pi].has(hole.hole) ? 1 : 0);
+      return g - (holeStrokeCount(strokeSets[pi], hole.hole));
     }).filter(function(n) { return n !== null; });
     return nets.length ? Math.min.apply(null, nets) : null;
   }
@@ -2211,16 +2206,19 @@ function buildScorecardHTML(r) {
   snap.forEach(function(p, pi) {
     var teamColor = pi < 2 ? 'rgba(0,84,164,0.25)' : 'rgba(215,25,32,0.2)';
     var grossTotal = 0; var hasAny = false;
+    var matchStrokes = strokes[pi];
     var cells = holes.map(function(h) {
       var g = getScoreForPlayerHole(scores, p, pi, h.hole);
       if (g !== null && !isNaN(g)) { grossTotal += g; hasAny = true; }
-      var hasStroke = strokeSets[pi].has(h.hole);
+      var strokeCnt = holeStrokeCount(strokeSets[pi], h.hole);
+      var hasStroke = strokeCnt > 0;
       var sc = scoreColor(g, h.par);
-      var dot = hasStroke ? '<span style="color:var(--gold);font-size:8px;vertical-align:super;">●</span>' : '';
+      var dot = strokeCnt > 0 ? '<span style="color:var(--gold);font-size:8px;vertical-align:super;">' + '●'.repeat(Math.min(strokeCnt, 3)) + '</span>' : '';
       return '<td style="border:1px solid rgba(255,255,255,0.1);padding:5px 3px;text-align:center;font-size:13px;font-weight:600;' + sc + '">' + (g !== null && !isNaN(g) ? g : '—') + dot + '</td>';
     });
+    var strokeLabel = matchStrokes > 0 ? ' <span style="font-size:10px;color:var(--gold);font-weight:700;border:1px solid rgba(216,179,93,0.4);border-radius:999px;padding:1px 5px;margin-left:4px;">+' + matchStrokes + '</span>' : ' <span style="font-size:10px;color:var(--muted);font-weight:400;border:1px solid rgba(154,170,188,0.3);border-radius:999px;padding:1px 5px;margin-left:4px;">scratch</span>';
     html += '<tr style="background:' + teamColor + ';">';
-    html += '<td ' + namStyle + ' style="border:1px solid rgba(255,255,255,0.1);padding:5px 8px;text-align:left;font-size:12px;font-family:\'Inter Tight\',sans-serif;font-weight:700;white-space:nowrap;color:#f0f4f8;background:' + teamColor + ';">' + p.name + ' <span style="font-size:10px;color:var(--muted);font-weight:400;">(GHIN ' + (p.ghin||'—') + ')</span></td>';
+    html += '<td ' + namStyle + ' style="border:1px solid rgba(255,255,255,0.1);padding:5px 8px;text-align:left;font-size:12px;font-family:\'Inter Tight\',sans-serif;font-weight:700;white-space:nowrap;color:#f0f4f8;background:' + teamColor + ';">' + p.name + ' <span style="font-size:10px;color:var(--muted);font-weight:400;">(GHIN ' + (p.ghin||'—') + ')</span>' + strokeLabel + '</td>';
     html += cells.join('');
     html += '<td style="border:1px solid rgba(255,255,255,0.1);padding:5px 3px;text-align:center;font-size:13px;font-weight:700;color:#f0f4f8;">' + (hasAny ? grossTotal : '—') + '</td>';
     html += '</tr>';
@@ -2230,7 +2228,7 @@ function buildScorecardHTML(r) {
     var netCells = holes.map(function(h) {
       var g = getScoreForPlayerHole(scores, p, pi, h.hole);
       if (g === null || isNaN(g)) return '<td style="border:1px solid rgba(255,255,255,0.1);padding:3px;text-align:center;font-size:11px;color:var(--muted);">—</td>';
-      var net = g - (strokeSets[pi].has(h.hole) ? 1 : 0);
+      var net = g - (holeStrokeCount(strokeSets[pi], h.hole));
       netTotal += net; hasNet = true;
       var sc = scoreColor(net, h.par);
       return '<td style="border:1px solid rgba(255,255,255,0.1);padding:3px;text-align:center;font-size:11px;' + sc + '">' + net + '</td>';

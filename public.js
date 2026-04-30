@@ -1252,7 +1252,7 @@ function getPlayerGross(player, hole) {
 function getPlayerNet(player, strokeSet, hole) {
   const gross = getPlayerGross(player, hole);
   if (gross === null) return null;
-  return gross - (strokeSet.has(hole.hole) ? 1 : 0);
+  return gross - holeStrokeCount(strokeSet, hole.hole);
 }
 
 function getTeamBestNet(players, strokeSets, indexes, hole) {
@@ -1440,17 +1440,18 @@ function renderScorecard() {
     let tds = '';
     holes.forEach(h => {
       const key = `${p.id}_${h.hole}`;
-      const hasStroke = holeGetsStroke(strokeSets[pi], h.hole);
+      const strokeCnt = holeStrokeCount(strokeSets[pi], h.hole);
+      const hasStroke = strokeCnt > 0;
       const gross = scorecardScores[key] ? parseInt(scorecardScores[key]) : null;
       if(gross !== null) {
-        netTotal += gross - (hasStroke ? 1 : 0);
+        netTotal += gross - holeStrokeCount(strokeSets[pi], h.hole);
         netCount++;
       }
       tds += `<td>
         <input class="score-inp${hasStroke?' stroke':''}" type="number" min="1" max="15"
           data-key="${key}" value="${scorecardScores[key]||''}"
           oninput="onScoreInput(this)">
-        ${hasStroke?'<span class="star">★</span>':''}
+        ${hasStroke?`<span class="star">${'●'.repeat(Math.min(strokeCnt,3))}</span>`:''}
       </td>`;
     });
 
@@ -1470,8 +1471,8 @@ function renderScorecard() {
   let runningOver = false;
   holes.forEach((h, hi) => {
     if(runningOver) { html+=`<td></td>`; return; }
-    const t1nets = [0,1].map(pi=>{const key=`${players[pi].id}_${h.hole}`;const g=scorecardScores[key]?parseInt(scorecardScores[key]):null;return g!==null?g-(holeGetsStroke(strokeSets[pi], h.hole)?1:0):null;}).filter(s=>s!==null);
-    const t2nets = [2,3].map(pi=>{const key=`${players[pi].id}_${h.hole}`;const g=scorecardScores[key]?parseInt(scorecardScores[key]):null;return g!==null?g-(holeGetsStroke(strokeSets[pi], h.hole)?1:0):null;}).filter(s=>s!==null);
+    const t1nets = [0,1].map(pi=>{const key=`${players[pi].id}_${h.hole}`;const g=scorecardScores[key]?parseInt(scorecardScores[key]):null;return g!==null?g-holeStrokeCount(strokeSets[pi], h.hole):null;}).filter(s=>s!==null);
+    const t2nets = [2,3].map(pi=>{const key=`${players[pi].id}_${h.hole}`;const g=scorecardScores[key]?parseInt(scorecardScores[key]):null;return g!==null?g-holeStrokeCount(strokeSets[pi], h.hole):null;}).filter(s=>s!==null);
     if(!t1nets.length||!t2nets.length){ html+=`<td class="ev">·</td>`; return; }
     const t1b=Math.min(...t1nets), t2b=Math.min(...t2nets);
     if(t1b<t2b){runningStatus++;html+=`<td class="up">▲</td>`;}
