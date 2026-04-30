@@ -68,6 +68,8 @@ let SCHEDULE_WEEKS = [
 ];
 
 let RESULTS = [];
+var SKINS_DATA = [];
+var CTP_DATA = [];
 const STORAGE_KEY = 'hggl_2026_state_v2';
 let currentUser = null;
 let scorecardScores = {};
@@ -491,6 +493,8 @@ function applyLeagueDataFromSheet(data) {
     localStorage.setItem('hggl2026_commissioner_note', String(data.commissionerNote));
   }
 
+  if (typeof applySkinsCtpFromSheet === 'function') applySkinsCtpFromSheet(data);
+
   LEAGUE_DATA_SOURCE = 'Google Sheets';
   LEAGUE_DATA_LAST_LOADED = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
 }
@@ -799,6 +803,7 @@ function buildDashboard() {
         <div id="lr-dots" class="lr-dots"></div>
       </div>
     </div>
+    <div class="dashboard-panel" style="margin-bottom:14px;"><div class="panel-title">Last Week&#39;s Extras</div><div id="extras-dashboard-content">${(typeof buildExtrasPanel === 'function') ? buildExtrasPanel() : ''}</div></div>
     <div class="dashboard-two">
       <div class="dashboard-panel"><div class="panel-title">Next Up${nextWeek ? ' · Week ' + nextWeek.week : ''}</div>${nextHtml || '<div class="dash-empty">This week is complete. See Results for match outcomes.</div>'}</div>
       <div class="dashboard-panel"><div class="panel-title">Top Standings</div>${miniRows || '<div class="dash-empty">No standings yet.</div>'}</div>
@@ -1110,6 +1115,16 @@ function buildResults() {
       '<div class="results-week-body" style="display:'+(shouldOpen?'block':'none')+'">'+cards+'</div>' +
       '</div>';
   }).join('');
+}
+
+function toggleResultsWeek(header) {
+  var body = header.nextElementSibling;
+  if (!body) return;
+  var chevron = header.querySelector('.results-week-chevron');
+  var isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : 'block';
+  if (chevron) chevron.textContent = isOpen ? '▼' : '▲';
+  header.classList.toggle('open', !isOpen);
 }
 
 function buildSchedule() {
@@ -1986,74 +2001,135 @@ function getScoreForPlayerHole(scoreSnapshot, player, playerIndex, holeNumber) {
 
 function computePlayerStats() {
   const players = {};
-  const statResults = getUniqueResultsForPlayerStats();
+  const statResults = (typeof getUniqueResultsForPlayerStats === 'function') ? getUniqueResultsForPlayerStats() : RESULTS;
 
   statResults.forEach(function(result) {
     var side = result.side === 'Front 9' ? 'front' : 'back';
     var holes = side === 'front' ? COURSE.front : COURSE.back;
-    var allPlayers = [];
     var snap = Array.isArray(result.playersSnapshot) ? result.playersSnapshot : [];
+    var scores = result.scoreSnapshot || {};
+    var allPlayers = [];
+
+    function snapPlayer(i, fallbackId, fallbackTeam, won, lost) {
+      var s = snap[i] || {};
+      return {
+        name: normalizePlayerStatName(s.name || s['Player Name'] || ''),
+        id: s.id || s.playerId || fallbackId,
+        ghin: s.ghin || s.GHIN || s['GHIN Index'] || s.index || '',
+        team: fallbackTeam,
+        won: won,
+        lost: lost
+      };
+    }
 
     if (snap.length >= 4) {
       allPlayers = [
-        {name:normalizePlayerStatName(snap[0].name || snap[0]['Player Name'] || ''), id:snap[0].id || snap[0].playerId || 'p1a', team:result.team1, won:result.winner===result.team1, lost:result.winner===result.team2},
-        {name:normalizePlayerStatName(snap[1].name || snap[1]['Player Name'] || ''), id:snap[1].id || snap[1].playerId || 'p1b', team:result.team1, won:result.winner===result.team1, lost:result.winner===result.team2},
-        {name:normalizePlayerStatName(snap[2].name || snap[2]['Player Name'] || ''), id:snap[2].id || snap[2].playerId || 'p2a', team:result.team2, won:result.winner===result.team2, lost:result.winner===result.team1},
-        {name:normalizePlayerStatName(snap[3].name || snap[3]['Player Name'] || ''), id:snap[3].id || snap[3].playerId || 'p2b', team:result.team2, won:result.winner===result.team2, lost:result.winner===result.team1},
+        snapPlayer(0, 'p1a', result.team1, result.winner === result.team1, result.winner === result.team2),
+        snapPlayer(1, 'p1b', result.team1, result.winner === result.team1, result.winner === result.team2),
+        snapPlayer(2, 'p2a', result.team2, result.winner === result.team2, result.winner === result.team1),
+        snapPlayer(3, 'p2b', result.team2, result.winner === result.team2, result.winner === result.team1)
       ];
     } else {
       var parsedNames = parsePlayerLinePlayers(result.playerLine);
-      allPlayers = [
-        {name:parsedNames[0], id:'p1a', team:result.team1, won:result.winner===result.team1, lost:result.winner===result.team2},
-        {name:parsedNames[1], id:'p1b', team:result.team1, won:result.winner===result.team1, lost:result.winner===result.team2},
-        {name:parsedNames[2], id:'p2a', team:result.team2, won:result.winner===result.team2, lost:result.winner===result.team1},
-        {name:parsedNames[3], id:'p2b', team:result.team2, won:result.winner===result.team2, lost:result.winner===result.team1},
-      ];
+      allPlayers = ['p1a','p1b','p2a','p2b'].map(function(id, i) {
+        return {
+          name: normalizePlayerStatName(parsedNames[i] || ''),
+          id: id,
+          ghin: '',
+          team: i < 2 ? result.team1 : result.team2,
+          won: i < 2 ? result.winner === result.team1 : result.winner === result.team2,
+          lost: i < 2 ? result.winner === result.team2 : result.winner === result.team1
+        };
+      });
     }
 
+    // Use the same match-play stroke allocation shown on the scorecard so dashboard leaders
+    // agree with the visible player net totals.
+    var playerStrokes = calcPlayerStrokes(allPlayers, side);
+    var strokeMaps = allPlayers.map(function(p, i) { return getStrokeHoles(playerStrokes[i] || 0, holes); });
+    var wlCounted = {};
+
     allPlayers.forEach(function(p, playerIndex) {
-      if(!p.name || /^Player\s/i.test(p.name)) return;
-      if(!players[p.name]) {
-        players[p.name] = {name:p.name, team:p.team, matchWins:0, matchLosses:0, matchTies:0,
-          roundsPlayed:0, totalGross:0, totalHoles:0, bestGross:Infinity, worstGross:-Infinity,
-          parDiffs:[], birdies:0, pars:0, bogeys:0, doubles:0, worse:0, holeScores:{}};
+      if (!p.name || /^Player\s/i.test(p.name)) return;
+      if (!players[p.name]) {
+        players[p.name] = {
+          name: p.name,
+          team: p.team,
+          matchWins: 0,
+          matchLosses: 0,
+          matchTies: 0,
+          roundsPlayed: 0,
+          totalGross: 0,
+          totalNet: 0,
+          totalHoles: 0,
+          bestGross: Infinity,
+          worstGross: -Infinity,
+          bestNet: undefined,
+          worstNet: undefined,
+          parDiffs: [],
+          birdies: 0,
+          pars: 0,
+          bogeys: 0,
+          doubles: 0,
+          worse: 0,
+          netBirdies: 0,
+          holeScores: {}
+        };
       }
       var ps = players[p.name];
       ps.team = p.team;
 
-      // Count the team match result once per player per unique match.
-      if(p.won) ps.matchWins++;
-      else if(p.lost) ps.matchLosses++;
-      else ps.matchTies++;
+      if (!wlCounted[p.name]) {
+        if (p.won) ps.matchWins++;
+        else if (p.lost) ps.matchLosses++;
+        else ps.matchTies++;
+        wlCounted[p.name] = true;
+      }
 
-      var scoreSnapshot = result.scoreSnapshot || {};
-      var grossTotal=0, holeCount=0;
+      if (!Object.keys(scores).length) return;
+
+      var grossTotal = 0;
+      var netTotal = 0;
+      var holeCount = 0;
       holes.forEach(function(h) {
-        var gross = getScoreForPlayerHole(scoreSnapshot, p, playerIndex, h.hole);
-        if(gross===null || isNaN(gross)) return;
+        var gross = getScoreForPlayerHole(scores, p, playerIndex, h.hole);
+        if (gross === null || isNaN(gross)) return;
+        var strokeCount = holeStrokeCount(strokeMaps[playerIndex], h.hole);
+        var net = gross - strokeCount;
+        var grossDiff = gross - h.par;
+        var netDiff = net - h.par;
+
         holeCount++;
         grossTotal += gross;
+        netTotal += net;
         ps.totalGross += gross;
+        ps.totalNet += net;
         ps.totalHoles++;
-        ps.parDiffs.push(gross - h.par);
-        var diff = gross - h.par;
-        if(diff <= -1) ps.birdies++;
-        else if(diff===0) ps.pars++;
-        else if(diff===1) ps.bogeys++;
-        else if(diff===2) ps.doubles++;
+        ps.parDiffs.push(grossDiff);
+
+        if (grossDiff <= -1) ps.birdies++;
+        else if (grossDiff === 0) ps.pars++;
+        else if (grossDiff === 1) ps.bogeys++;
+        else if (grossDiff === 2) ps.doubles++;
         else ps.worse++;
-        if(!ps.holeScores[h.hole]) ps.holeScores[h.hole] = [];
-        ps.holeScores[h.hole].push({gross:gross, par:h.par});
+
+        if (netDiff <= -1) ps.netBirdies++;
+        if (!ps.holeScores[h.hole]) ps.holeScores[h.hole] = [];
+        ps.holeScores[h.hole].push({ gross: gross, net: net, par: h.par });
       });
-      if(holeCount > 0) {
+
+      if (holeCount > 0) {
         ps.roundsPlayed++;
-        if(grossTotal < ps.bestGross) ps.bestGross = grossTotal;
-        if(grossTotal > ps.worstGross) ps.worstGross = grossTotal;
+        if (grossTotal < ps.bestGross) ps.bestGross = grossTotal;
+        if (grossTotal > ps.worstGross) ps.worstGross = grossTotal;
+        if (ps.bestNet === undefined || netTotal < ps.bestNet) ps.bestNet = netTotal;
+        if (ps.worstNet === undefined || netTotal > ps.worstNet) ps.worstNet = netTotal;
       }
     });
   });
   return players;
 }
+
 
 
 let currentStatFilter = 'all';
@@ -2462,6 +2538,39 @@ async function toggleWeekCompletion(weekNum, btn, markComplete) {
     btn.disabled = false;
     alert('Could not update: ' + err.message);
   }
+}
+
+function applySkinsCtpFromSheet(data) {
+  SKINS_DATA = (data.skins || []).filter(function(r){ return r.Week && r.Player; });
+  CTP_DATA = (data.ctp || []).filter(function(r){ return r.Week && r.Player; });
+}
+
+function buildExtrasPanel() {
+  if (typeof SKINS_DATA === 'undefined' || typeof CTP_DATA === 'undefined') return '<div class="dash-empty">Skins and CTP results will appear here after Week 1.</div>';
+  if (!SKINS_DATA.length && !CTP_DATA.length) return '<div class="dash-empty">Skins and CTP results will appear here after Week 1.</div>';
+  var lsw = SKINS_DATA.length ? Math.max.apply(null, SKINS_DATA.map(function(r){ return Number(r.Week||0); })) : 0;
+  var lcw = CTP_DATA.length ? Math.max.apply(null, CTP_DATA.map(function(r){ return Number(r.Week||0); })) : 0;
+  var lw = Math.max(lsw, lcw);
+  var ws = SKINS_DATA.filter(function(r){ return Number(r.Week||0)===lw; });
+  var wc = CTP_DATA.filter(function(r){ return Number(r.Week||0)===lw; });
+  var html = '<div class="extras-dashboard-label">Week ' + lw + '</div>';
+  html += '<div class="extras-dashboard-row"><span class="extras-dashboard-icon">&#x1F3C6;</span><div class="extras-dashboard-content"><div class="extras-dashboard-cat">Net Skins</div>';
+  if (ws.length) {
+    ws.forEach(function(r) {
+      var p = Number(String(r.Payout||0).replace(/[$,]/g,''));
+      html += '<div class="extras-dashboard-detail"><strong>'+r.Player+'</strong>'+(r.Hole?' &middot; Hole '+r.Hole:'')+(p?' &middot; <span style="color:var(--green);">$'+p.toFixed(2)+'</span>':'')+'</div>';
+    });
+  } else { html += '<div class="extras-dashboard-detail" style="color:var(--muted);">No skins entered yet</div>'; }
+  html += '</div></div>';
+  html += '<div class="extras-dashboard-row"><span class="extras-dashboard-icon">&#x1F4CD;</span><div class="extras-dashboard-content"><div class="extras-dashboard-cat">Closest to the Pin</div>';
+  if (wc.length) {
+    wc.forEach(function(r) {
+      var p = Number(String(r.Payout||0).replace(/[$,]/g,''));
+      html += '<div class="extras-dashboard-detail"><strong>'+r.Player+'</strong> &middot; Hole '+r.Hole+(r.Distance?' &middot; '+r.Distance:'')+(p?' &middot; <span style="color:var(--green);">$'+p.toFixed(2)+'</span>':'')+'</div>';
+    });
+  } else { html += '<div class="extras-dashboard-detail" style="color:var(--muted);">No CTP entered yet</div>'; }
+  html += '</div></div>';
+  return html;
 }
 
 // Extras (Skins + CTP) Admin

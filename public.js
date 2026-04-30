@@ -1869,80 +1869,135 @@ function getScoreForPlayerHole(scoreSnapshot, player, playerIndex, holeNumber) {
 
 function computePlayerStats() {
   const players = {};
-  RESULTS.forEach(function(result) {
+  const statResults = (typeof getUniqueResultsForPlayerStats === 'function') ? getUniqueResultsForPlayerStats() : RESULTS;
+
+  statResults.forEach(function(result) {
     var side = result.side === 'Front 9' ? 'front' : 'back';
     var holes = side === 'front' ? COURSE.front : COURSE.back;
-    var snap = result.playersSnapshot || [];
+    var snap = Array.isArray(result.playersSnapshot) ? result.playersSnapshot : [];
     var scores = result.scoreSnapshot || {};
     var allPlayers = [];
+
+    function snapPlayer(i, fallbackId, fallbackTeam, won, lost) {
+      var s = snap[i] || {};
+      return {
+        name: normalizePlayerStatName(s.name || s['Player Name'] || ''),
+        id: s.id || s.playerId || fallbackId,
+        ghin: s.ghin || s.GHIN || s['GHIN Index'] || s.index || '',
+        team: fallbackTeam,
+        won: won,
+        lost: lost
+      };
+    }
+
     if (snap.length >= 4) {
       allPlayers = [
-        {name:normalizePlayerStatName(snap[0].name||snap[0]['Player Name']||''), id:snap[0].id||'p1a', ghin:snap[0].ghin||snap[0].GHIN||'', team:result.team1, won:result.winner===result.team1, lost:result.winner===result.team2},
-        {name:normalizePlayerStatName(snap[1].name||snap[1]['Player Name']||''), id:snap[1].id||'p1b', ghin:snap[1].ghin||snap[1].GHIN||'', team:result.team1, won:result.winner===result.team1, lost:result.winner===result.team2},
-        {name:normalizePlayerStatName(snap[2].name||snap[2]['Player Name']||''), id:snap[2].id||'p2a', ghin:snap[2].ghin||snap[2].GHIN||'', team:result.team2, won:result.winner===result.team2, lost:result.winner===result.team1},
-        {name:normalizePlayerStatName(snap[3].name||snap[3]['Player Name']||''), id:snap[3].id||'p2b', ghin:snap[3].ghin||snap[3].GHIN||'', team:result.team2, won:result.winner===result.team2, lost:result.winner===result.team1},
+        snapPlayer(0, 'p1a', result.team1, result.winner === result.team1, result.winner === result.team2),
+        snapPlayer(1, 'p1b', result.team1, result.winner === result.team1, result.winner === result.team2),
+        snapPlayer(2, 'p2a', result.team2, result.winner === result.team2, result.winner === result.team1),
+        snapPlayer(3, 'p2b', result.team2, result.winner === result.team2, result.winner === result.team1)
       ];
     } else {
       var parsedNames = parsePlayerLinePlayers(result.playerLine);
       allPlayers = ['p1a','p1b','p2a','p2b'].map(function(id, i) {
-        return {name:normalizePlayerStatName(parsedNames[i]||''), id:id, ghin:'',
-          team: i<2?result.team1:result.team2,
-          won: i<2?result.winner===result.team1:result.winner===result.team2,
-          lost: i<2?result.winner===result.team2:result.winner===result.team1};
+        return {
+          name: normalizePlayerStatName(parsedNames[i] || ''),
+          id: id,
+          ghin: '',
+          team: i < 2 ? result.team1 : result.team2,
+          won: i < 2 ? result.winner === result.team1 : result.winner === result.team2,
+          lost: i < 2 ? result.winner === result.team2 : result.winner === result.team1
+        };
       });
     }
+
+    // Use the same match-play stroke allocation shown on the scorecard so dashboard leaders
+    // agree with the visible player net totals.
+    var playerStrokes = calcPlayerStrokes(allPlayers, side);
+    var strokeMaps = allPlayers.map(function(p, i) { return getStrokeHoles(playerStrokes[i] || 0, holes); });
     var wlCounted = {};
-    allPlayers.forEach(function(p) {
-      if (!p.name || p.name.startsWith('Player')) return;
-      if (!players[p.name]) players[p.name] = {
-        name:p.name, team:p.team, matchWins:0, matchLosses:0, matchTies:0,
-        roundsPlayed:0, totalGross:0, totalNet:0, totalHoles:0,
-        bestGross:Infinity, worstGross:-Infinity, bestNet:undefined, worstNet:undefined,
-        parDiffs:[], birdies:0, pars:0, bogeys:0, doubles:0, worse:0, netBirdies:0, holeScores:{}
-      };
+
+    allPlayers.forEach(function(p, playerIndex) {
+      if (!p.name || /^Player\s/i.test(p.name)) return;
+      if (!players[p.name]) {
+        players[p.name] = {
+          name: p.name,
+          team: p.team,
+          matchWins: 0,
+          matchLosses: 0,
+          matchTies: 0,
+          roundsPlayed: 0,
+          totalGross: 0,
+          totalNet: 0,
+          totalHoles: 0,
+          bestGross: Infinity,
+          worstGross: -Infinity,
+          bestNet: undefined,
+          worstNet: undefined,
+          parDiffs: [],
+          birdies: 0,
+          pars: 0,
+          bogeys: 0,
+          doubles: 0,
+          worse: 0,
+          netBirdies: 0,
+          holeScores: {}
+        };
+      }
       var ps = players[p.name];
+      ps.team = p.team;
+
       if (!wlCounted[p.name]) {
         if (p.won) ps.matchWins++;
         else if (p.lost) ps.matchLosses++;
         else ps.matchTies++;
         wlCounted[p.name] = true;
       }
-      ps.team = p.team;
+
       if (!Object.keys(scores).length) return;
-      var fullHdcp = (p.ghin && p.ghin !== '') ? nineHoleHdcp(p.ghin, side) : null;
-      var fullStrokeHoles = fullHdcp !== null ? getStrokeHoles(fullHdcp, holes) : new Map();
-      var grossTotal=0, netTotal=0, holeCount=0;
+
+      var grossTotal = 0;
+      var netTotal = 0;
+      var holeCount = 0;
       holes.forEach(function(h) {
-        var key = p.id+'_'+h.hole;
-        var raw = scores[key];
-        var gross = (raw!==undefined&&raw!==null&&raw!=='') ? parseInt(raw) : null;
-        if (gross===null||isNaN(gross)) return;
-        holeCount++; grossTotal+=gross; ps.totalGross+=gross; ps.totalHoles++;
-        var strokeCount = fullHdcp!==null ? holeStrokeCount(fullStrokeHoles,h.hole) : 0;
+        var gross = getScoreForPlayerHole(scores, p, playerIndex, h.hole);
+        if (gross === null || isNaN(gross)) return;
+        var strokeCount = holeStrokeCount(strokeMaps[playerIndex], h.hole);
         var net = gross - strokeCount;
-        netTotal+=net; ps.totalNet+=net;
-        ps.parDiffs.push(gross-h.par);
-        var diff=gross-h.par; var netDiff=net-h.par;
-        if(diff<=-1) ps.birdies++;
-        else if(diff===0) ps.pars++;
-        else if(diff===1) ps.bogeys++;
-        else if(diff===2) ps.doubles++;
+        var grossDiff = gross - h.par;
+        var netDiff = net - h.par;
+
+        holeCount++;
+        grossTotal += gross;
+        netTotal += net;
+        ps.totalGross += gross;
+        ps.totalNet += net;
+        ps.totalHoles++;
+        ps.parDiffs.push(grossDiff);
+
+        if (grossDiff <= -1) ps.birdies++;
+        else if (grossDiff === 0) ps.pars++;
+        else if (grossDiff === 1) ps.bogeys++;
+        else if (grossDiff === 2) ps.doubles++;
         else ps.worse++;
-        if(netDiff<=-1) ps.netBirdies++;
-        if(!ps.holeScores[h.hole]) ps.holeScores[h.hole]=[];
-        ps.holeScores[h.hole].push({gross:gross,par:h.par});
+
+        if (netDiff <= -1) ps.netBirdies++;
+        if (!ps.holeScores[h.hole]) ps.holeScores[h.hole] = [];
+        ps.holeScores[h.hole].push({ gross: gross, net: net, par: h.par });
       });
-      if (holeCount>0) {
+
+      if (holeCount > 0) {
         ps.roundsPlayed++;
-        if(grossTotal<ps.bestGross) ps.bestGross=grossTotal;
-        if(grossTotal>ps.worstGross) ps.worstGross=grossTotal;
-        if(ps.bestNet===undefined||netTotal<ps.bestNet) ps.bestNet=netTotal;
-        if(ps.worstNet===undefined||netTotal>ps.worstNet) ps.worstNet=netTotal;
+        if (grossTotal < ps.bestGross) ps.bestGross = grossTotal;
+        if (grossTotal > ps.worstGross) ps.worstGross = grossTotal;
+        if (ps.bestNet === undefined || netTotal < ps.bestNet) ps.bestNet = netTotal;
+        if (ps.worstNet === undefined || netTotal > ps.worstNet) ps.worstNet = netTotal;
       }
     });
   });
   return players;
 }
+
 
 
 let currentStatFilter = 'all';
