@@ -539,11 +539,15 @@ async function postLeagueAction(action, payload = {}) {
 }
 
 function getAdminKey() {
-  return localStorage.getItem('hggl2026_admin_key') || 'hggl2026-hiscock-drexler';
+  return sessionStorage.getItem('hggl2026_admin_key') || '';
 }
 
 function saveAdminKey(key) {
-  localStorage.setItem('hggl2026_admin_key', String(key || '').trim());
+  sessionStorage.setItem('hggl2026_admin_key', String(key || '').trim());
+}
+
+function clearAdminKey() {
+  sessionStorage.removeItem('hggl2026_admin_key');
 }
 
 async function initLeagueSite() {
