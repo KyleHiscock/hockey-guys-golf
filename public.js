@@ -89,44 +89,33 @@ function nineHoleHdcp(ghinIndex, side) {
 // Strokes each player gets relative to the lowest hdcp player
 // Returns array of [strokes_p1a, strokes_p1b, strokes_p2a, strokes_p2b]
 function calcPlayerStrokes(players, side) {
-  // Step 1: Calculate each player's 9-hole course handicap using USGA formula
   const hdcps = players.map(p => {
     const g = parseFloat(p.ghin);
     return isNaN(g) ? null : nineHoleHdcp(g, side);
   });
-  // Step 2: Apply 90% for 2-man best ball, round to nearest whole number
   const adjusted = hdcps.map(h => h !== null ? Math.round(h * 0.9) : null);
-  // Step 3: Low handicap gets 0, others get the difference
   const valid = adjusted.filter(h => h !== null);
   const minH = valid.length ? Math.min(...valid) : 0;
   return adjusted.map(h => h !== null ? Math.max(0, h - minH) : 0);
 }
 
-// Which holes on this 9 get strokes (hardest = lowest hcp number)
-// Returns a Map of hole -> number of strokes given on that hole
-// e.g. 18 strokes on 9 holes = 2 strokes on every hole
-// e.g. 11 strokes = 2 strokes on 2 hardest holes, 1 stroke on next 9
+// Which holes on this 9 get strokes — returns Map of hole -> stroke count
 function getStrokeHoles(numStrokes, holes) {
   if (numStrokes <= 0) return new Map();
   const sorted = [...holes].sort((a,b) => a.hcp - b.hcp);
   const map = new Map();
-  // Full passes: each pass gives 1 stroke to all 9 holes
   const fullPasses = Math.floor(numStrokes / 9);
   const remainder = numStrokes % 9;
   sorted.forEach(function(h) { if (fullPasses > 0) map.set(h.hole, fullPasses); });
-  // Remaining strokes go to the hardest holes
   for (var i = 0; i < remainder; i++) {
     map.set(sorted[i].hole, (map.get(sorted[i].hole) || 0) + 1);
   }
   return map;
 }
 
-// Backwards-compatible helper: check if a hole gets any strokes
 function holeGetsStroke(strokeMap, holeNum) {
   return strokeMap instanceof Map ? (strokeMap.get(holeNum) || 0) > 0 : strokeMap.has(holeNum);
 }
-
-// Get stroke count for a hole
 function holeStrokeCount(strokeMap, holeNum) {
   if (strokeMap instanceof Map) return strokeMap.get(holeNum) || 0;
   return strokeMap.has(holeNum) ? 1 : 0;
@@ -642,13 +631,74 @@ function resetSeasonData() {
 }
 
 // ── TICKER ──
+
+// ── STREAK TRACKER ────────────────────────────────────────────────────────────
+function getTeamStreak(teamName) {
+  if (!RESULTS.length) return null;
+  const sorted = [...RESULTS].sort(function(a,b){ return (parseInt(b.week)||0)-(parseInt(a.week)||0); });
+  const relevant = sorted.filter(function(r){
+    return normalizeTeamName(r.team1)===teamName || normalizeTeamName(r.team2)===teamName;
+  });
+  if (!relevant.length) return null;
+  const first = relevant[0];
+  const firstWon = normalizeTeamName(first.winner)===teamName;
+  const firstTied = !first.winner||first.winner==='';
+  const streakType = firstTied?'T':(firstWon?'W':'L');
+  let count = 1;
+  for (let i=1;i<relevant.length;i++) {
+    const r = relevant[i];
+    const won = normalizeTeamName(r.winner)===teamName;
+    const tied = !r.winner||r.winner==='';
+    const type = tied?'T':(won?'W':'L');
+    if (type===streakType) count++;
+    else break;
+  }
+  return {type:streakType, count:count};
+}
+
+function streakBadge(streak) {
+  if (!streak||streak.count===0) return '';
+  if (streak.type==='W') {
+    const icon = streak.count>=3?'&#x1F525;':'&#x2B06;&#xFE0F;';
+    return '<span class="streak-badge streak-w">'+icon+' W'+streak.count+'</span>';
+  }
+  if (streak.type==='L') {
+    const icon = streak.count>=3?'&#x1F976;':'&#x2B07;&#xFE0F;';
+    return '<span class="streak-badge streak-l">'+icon+' L'+streak.count+'</span>';
+  }
+  return '<span class="streak-badge streak-t">= T'+streak.count+'</span>';
+}
+
 function buildTicker() {
   const sorted = getSortedStandings();
-  const doubled = [...sorted,...sorted];
-  document.getElementById('ticker-track').innerHTML = doubled.map(t => {
-    const logo = LOGOS[t.name] ? `<img src="${LOGOS[t.name]}" class="t-logo-sm" alt="${t.name}">` : '';
-    return `<span class="ticker-item">${logo} ${t.name} <span class="record">${t.w}-${t.l}</span></span>`;
-  }).join('');
+  const items = [];
+  sorted.forEach(function(t) {
+    const logo = LOGOS[t.name] ? '<img src="'+LOGOS[t.name]+'" class="t-logo-sm" alt="'+t.name+'">' : '';
+    const streak = getTeamStreak(normalizeTeamName(t.name));
+    const streakHtml = streak && streak.count >= 2 ? ' <span style="font-size:10px;opacity:0.85;">'+streak.type+streak.count+'</span>' : '';
+    items.push('<span class="ticker-item">'+logo+' '+t.name+' <span class="record">'+t.w+'-'+t.l+'</span>'+streakHtml+'</span>');
+  });
+  if (RESULTS.length) {
+    const latestWeek = Math.max.apply(null, RESULTS.map(function(r){ return parseInt(r.week)||0; }));
+    RESULTS.filter(function(r){ return parseInt(r.week)===latestWeek; }).forEach(function(r) {
+      items.push('<span class="ticker-item ticker-result">&#x26F3; Wk'+latestWeek+': <strong>'+(r.winner||'Tied')+'</strong> '+(r.matchResult||'')+'</span>');
+    });
+  }
+  if (typeof SKINS_DATA !== 'undefined' && SKINS_DATA.length) {
+    const lw = Math.max.apply(null, SKINS_DATA.map(function(r){ return Number(r.Week||0); }));
+    SKINS_DATA.filter(function(r){ return Number(r.Week||0)===lw; }).forEach(function(r) {
+      var p = Number(String(r.Payout||0).replace(/[$,]/g,''));
+      items.push('<span class="ticker-item ticker-skins">&#x1F3C6; Skins Wk'+lw+': '+r.Player+(p?' $'+p.toFixed(0):'')+'</span>');
+    });
+  }
+  if (typeof CTP_DATA !== 'undefined' && CTP_DATA.length) {
+    const lw = Math.max.apply(null, CTP_DATA.map(function(r){ return Number(r.Week||0); }));
+    CTP_DATA.filter(function(r){ return Number(r.Week||0)===lw; }).forEach(function(r) {
+      items.push('<span class="ticker-item ticker-ctp">&#x1F4CD; CTP Wk'+lw+': '+r.Player+' Hole '+r.Hole+(r.Distance?' '+r.Distance:'')+'</span>');
+    });
+  }
+  const doubled = [...items,...items];
+  document.getElementById('ticker-track').innerHTML = doubled.join('');
 }
 
 // ── STANDINGS ──
@@ -658,10 +708,11 @@ function buildStandingsTable() {
   const last = sorted[sorted.length-1];
   document.getElementById('standings-body').innerHTML = sorted.map((t,i) => {
     const isLast = t===last && (t.w>0||t.l>0);
+    const streak = getTeamStreak(normalizeTeamName(t.name));
     return `<tr class="standings-row${i===0?' leader':''}">
       <td class="rank-cell rank-${i+1}">${ranks[i]||i+1}</td>
       <td><div class="team-cell">${logoImg(t.name,'t-logo','t-placeholder')}<div>
-        <div class="t-name">${t.name}${isLast?'<span class="bubble-badge">😬 Buy Beers</span>':''}</div>
+        <div class="t-name">${t.name}${isLast?'<span class="bubble-badge">😬 Buy Beers</span>':''}${streakBadge(streak)}</div>
         <div class="t-players">${t.players}</div>
       </div></div></td>
       <td class="w-cell">${t.w}</td>
@@ -748,7 +799,7 @@ function buildDashboard() {
         <div id="lr-dots" class="lr-dots"></div>
       </div>
     </div>
-    <div class="dashboard-panel" style="margin-bottom:14px;"><div class="panel-title">Last Week&#39;s Extras</div><div id="extras-dashboard-content">${buildExtrasPanel()}</div></div>
+    <div class="dashboard-panel" style="margin-bottom:14px;"><div class="panel-title">Last Week&#39;s Extras</div><div id="extras-dashboard-content">${(typeof buildExtrasPanel === 'function') ? buildExtrasPanel() : ''}</div></div>
     <div class="dashboard-two">
       <div class="dashboard-panel"><div class="panel-title">Next Up${nextWeek ? ' · Week ' + nextWeek.week : ''}</div>${nextHtml || '<div class="dash-empty">This week is complete. See Results for match outcomes.</div>'}</div>
       <div class="dashboard-panel"><div class="panel-title">Top Standings</div>${miniRows || '<div class="dash-empty">No standings yet.</div>'}</div>
@@ -1735,9 +1786,9 @@ function computePlayerStats() {
       var parsedNames = parsePlayerLinePlayers(result.playerLine);
       allPlayers = ['p1a','p1b','p2a','p2b'].map(function(id, i) {
         return {name:normalizePlayerStatName(parsedNames[i]||''), id:id, ghin:'',
-          team: i < 2 ? result.team1 : result.team2,
-          won: i < 2 ? result.winner===result.team1 : result.winner===result.team2,
-          lost: i < 2 ? result.winner===result.team2 : result.winner===result.team1};
+          team: i<2?result.team1:result.team2,
+          won: i<2?result.winner===result.team1:result.winner===result.team2,
+          lost: i<2?result.winner===result.team2:result.winner===result.team1};
       });
     }
     var wlCounted = {};
@@ -1746,10 +1797,8 @@ function computePlayerStats() {
       if (!players[p.name]) players[p.name] = {
         name:p.name, team:p.team, matchWins:0, matchLosses:0, matchTies:0,
         roundsPlayed:0, totalGross:0, totalNet:0, totalHoles:0,
-        bestGross:Infinity, worstGross:-Infinity,
-        bestNet:undefined, worstNet:undefined,
-        parDiffs:[], birdies:0, pars:0, bogeys:0, doubles:0, worse:0,
-        netBirdies:0, holeScores:{}
+        bestGross:Infinity, worstGross:-Infinity, bestNet:undefined, worstNet:undefined,
+        parDiffs:[], birdies:0, pars:0, bogeys:0, doubles:0, worse:0, netBirdies:0, holeScores:{}
       };
       var ps = players[p.name];
       if (!wlCounted[p.name]) {
@@ -1761,39 +1810,34 @@ function computePlayerStats() {
       ps.team = p.team;
       if (!Object.keys(scores).length) return;
       var fullHdcp = (p.ghin && p.ghin !== '') ? nineHoleHdcp(p.ghin, side) : null;
-      var fullStrokeHoles = fullHdcp !== null ? getStrokeHoles(fullHdcp, holes) : new Set();
-      var grossTotal = 0, netTotal = 0, holeCount = 0;
+      var fullStrokeHoles = fullHdcp !== null ? getStrokeHoles(fullHdcp, holes) : new Map();
+      var grossTotal=0, netTotal=0, holeCount=0;
       holes.forEach(function(h) {
-        var key = p.id + '_' + h.hole;
+        var key = p.id+'_'+h.hole;
         var raw = scores[key];
-        var gross = (raw !== undefined && raw !== null && raw !== '') ? parseInt(raw) : null;
-        if (gross === null || isNaN(gross)) return;
-        holeCount++;
-        grossTotal += gross;
-        ps.totalGross += gross;
-        ps.totalHoles++;
-        var strokeCount = fullHdcp !== null ? holeStrokeCount(fullStrokeHoles, h.hole) : 0;
+        var gross = (raw!==undefined&&raw!==null&&raw!=='') ? parseInt(raw) : null;
+        if (gross===null||isNaN(gross)) return;
+        holeCount++; grossTotal+=gross; ps.totalGross+=gross; ps.totalHoles++;
+        var strokeCount = fullHdcp!==null ? holeStrokeCount(fullStrokeHoles,h.hole) : 0;
         var net = gross - strokeCount;
-        netTotal += net;
-        ps.totalNet += net;
-        ps.parDiffs.push(gross - h.par);
-        var diff = gross - h.par;
-        var netDiff = net - h.par;
-        if (diff <= -1) ps.birdies++;
-        else if (diff === 0) ps.pars++;
-        else if (diff === 1) ps.bogeys++;
-        else if (diff === 2) ps.doubles++;
+        netTotal+=net; ps.totalNet+=net;
+        ps.parDiffs.push(gross-h.par);
+        var diff=gross-h.par; var netDiff=net-h.par;
+        if(diff<=-1) ps.birdies++;
+        else if(diff===0) ps.pars++;
+        else if(diff===1) ps.bogeys++;
+        else if(diff===2) ps.doubles++;
         else ps.worse++;
-        if (netDiff <= -1) ps.netBirdies++;
-        if (!ps.holeScores[h.hole]) ps.holeScores[h.hole] = [];
-        ps.holeScores[h.hole].push({gross:gross, par:h.par});
+        if(netDiff<=-1) ps.netBirdies++;
+        if(!ps.holeScores[h.hole]) ps.holeScores[h.hole]=[];
+        ps.holeScores[h.hole].push({gross:gross,par:h.par});
       });
-      if (holeCount > 0) {
+      if (holeCount>0) {
         ps.roundsPlayed++;
-        if (grossTotal < ps.bestGross) ps.bestGross = grossTotal;
-        if (grossTotal > ps.worstGross) ps.worstGross = grossTotal;
-        if (ps.bestNet === undefined || netTotal < ps.bestNet) ps.bestNet = netTotal;
-        if (ps.worstNet === undefined || netTotal > ps.worstNet) ps.worstNet = netTotal;
+        if(grossTotal<ps.bestGross) ps.bestGross=grossTotal;
+        if(grossTotal>ps.worstGross) ps.worstGross=grossTotal;
+        if(ps.bestNet===undefined||netTotal<ps.bestNet) ps.bestNet=netTotal;
+        if(ps.worstNet===undefined||netTotal>ps.worstNet) ps.worstNet=netTotal;
       }
     });
   });
@@ -1855,7 +1899,7 @@ function buildStats() {
       '<div class="leader-icon">⭐</div>' +
       '<div class="leader-stat">' + (bestRound&&bestRound.bestGross!==Infinity?bestRound.bestGross:'—') + '</div>' +
       '<div class="leader-name">' + (bestRound&&bestRound.bestGross!==Infinity?bestRound.name:'TBD') + '</div>' +
-      '<div class="leader-label">Best Round</div>' +
+      '<div class="leader-label">Best Gross</div>' +
     '</div>';
 
   // Filter & sort
@@ -1878,8 +1922,8 @@ function buildStats() {
     const initials = p.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
     const bestG = p.bestGross!==Infinity?p.bestGross:'—';
     const worstG = p.worstGross!==-Infinity?p.worstGross:'—';
-    const bestN = (p.bestNet!==undefined&&p.bestNet!==Infinity)?p.bestNet:'—';
-    const worstN = (p.worstNet!==undefined&&p.worstNet!==-Infinity)?p.worstNet:'—';
+    const bestN = (p.bestNet!==undefined)?p.bestNet:'—';
+    const worstN = (p.worstNet!==undefined)?p.worstNet:'—';
     const maxBar = Math.max(p.birdies,p.pars,p.bogeys,p.doubles,p.worse,1);
     const cardId = 'psc_' + p.name.replace(/[^a-zA-Z0-9]/g,'_');
     const avgVsParNum = parseFloat(avgVsPar);
@@ -2088,9 +2132,9 @@ function buildScorecardHTML(r) {
     var cells = holes.map(function(h) {
       var g = getScoreForPlayerHole(scores, p, pi, h.hole);
       if (g !== null && !isNaN(g)) { grossTotal += g; hasAny = true; }
-      var strokeCnt = holeStrokeCount(strokeSets[pi], h.hole);
+      var hasStroke = holeGetsStroke(strokeSets[pi], h.hole);
       var sc = scoreColor(g, h.par);
-      var dot = strokeCnt > 0 ? '<span style="color:var(--gold);font-size:8px;vertical-align:super;">' + '●'.repeat(Math.min(strokeCnt, 3)) + '</span>' : '';
+      var dot = hasStroke ? '<span style="color:var(--gold);font-size:8px;vertical-align:super;">●</span>' : '';
       return '<td style="border:1px solid rgba(255,255,255,0.1);padding:5px 3px;text-align:center;font-size:13px;font-weight:600;' + sc + '">' + (g !== null && !isNaN(g) ? g : '—') + dot + '</td>';
     });
     html += '<tr style="background:' + teamColor + ';">';
@@ -2166,61 +2210,37 @@ function buildScorecardHTML(r) {
   return html;
 }
 
-// ── DASHBOARD EXTRAS PANEL ────────────────────────────────────────────────────
-function buildExtrasPanel() {
-  if (typeof SKINS_DATA === "undefined" || typeof CTP_DATA === "undefined") return '<div class="dash-empty">Skins and CTP results will appear here after Week 1.</div>';
-  if (!SKINS_DATA.length && !CTP_DATA.length) {
-    return '<div class="dash-empty">Skins and CTP results will appear here after Week 1.</div>';
-  }
-
-  var latestSkinsWeek = SKINS_DATA.length ? Math.max.apply(null, SKINS_DATA.map(function(r){ return Number(r.Week||0); })) : 0;
-  var latestCtpWeek = CTP_DATA.length ? Math.max.apply(null, CTP_DATA.map(function(r){ return Number(r.Week||0); })) : 0;
-  var latestWeek = Math.max(latestSkinsWeek, latestCtpWeek);
-
-  var weekSkins = SKINS_DATA.filter(function(r){ return Number(r.Week||0) === latestWeek; });
-  var weekCtp   = CTP_DATA.filter(function(r){ return Number(r.Week||0) === latestWeek; });
-
-  var html = '<div class="extras-dashboard-label">Week ' + latestWeek + '</div>';
-
-  // Skins
-  html += '<div class="extras-dashboard-row"><span class="extras-dashboard-icon">&#127942;</span><div class="extras-dashboard-content">';
-  html += '<div class="extras-dashboard-cat">Net Skins</div>';
-  if (weekSkins.length) {
-    weekSkins.forEach(function(r) {
-      var payout = Number(String(r.Payout || r['Payout ($)'] || 0).replace(/[$,]/g,''));
-      html += '<div class="extras-dashboard-detail"><strong>' + r.Player + '</strong>' +
-        (r.Hole ? ' &nbsp;&middot;&nbsp; Hole ' + r.Hole : '') +
-        (payout ? ' &nbsp;&middot;&nbsp; <span style="color:var(--green);">$' + payout.toFixed(2) + '</span>' : '') +
-        '</div>';
-    });
-  } else {
-    html += '<div class="extras-dashboard-detail" style="color:var(--muted);">No skins entered yet</div>';
-  }
-  html += '</div></div>';
-
-  // CTP
-  html += '<div class="extras-dashboard-row"><span class="extras-dashboard-icon">&#128205;</span><div class="extras-dashboard-content">';
-  html += '<div class="extras-dashboard-cat">Closest to the Pin</div>';
-  if (weekCtp.length) {
-    weekCtp.forEach(function(r) {
-      var payout = Number(String(r.Payout || r['Payout ($)'] || 0).replace(/[$,]/g,''));
-      html += '<div class="extras-dashboard-detail"><strong>' + r.Player + '</strong>' +
-        ' &nbsp;&middot;&nbsp; Hole ' + r.Hole +
-        (r.Distance ? ' &nbsp;&middot;&nbsp; ' + r.Distance : '') +
-        (payout ? ' &nbsp;&middot;&nbsp; <span style="color:var(--green);">$' + payout.toFixed(2) + '</span>' : '') +
-        '</div>';
-    });
-  } else {
-    html += '<div class="extras-dashboard-detail" style="color:var(--muted);">No CTP entered yet</div>';
-  }
-  html += '</div></div>';
-
-  return html;
-}
-
 function applySkinsCtpFromSheet(data) {
   SKINS_DATA = (data.skins || []).filter(function(r){ return r.Week && r.Player; });
   CTP_DATA = (data.ctp || []).filter(function(r){ return r.Week && r.Player; });
+}
+
+function buildExtrasPanel() {
+  if (typeof SKINS_DATA === 'undefined' || typeof CTP_DATA === 'undefined') return '<div class="dash-empty">Skins and CTP results will appear here after Week 1.</div>';
+  if (!SKINS_DATA.length && !CTP_DATA.length) return '<div class="dash-empty">Skins and CTP results will appear here after Week 1.</div>';
+  var lsw = SKINS_DATA.length ? Math.max.apply(null, SKINS_DATA.map(function(r){ return Number(r.Week||0); })) : 0;
+  var lcw = CTP_DATA.length ? Math.max.apply(null, CTP_DATA.map(function(r){ return Number(r.Week||0); })) : 0;
+  var lw = Math.max(lsw, lcw);
+  var ws = SKINS_DATA.filter(function(r){ return Number(r.Week||0)===lw; });
+  var wc = CTP_DATA.filter(function(r){ return Number(r.Week||0)===lw; });
+  var html = '<div class="extras-dashboard-label">Week ' + lw + '</div>';
+  html += '<div class="extras-dashboard-row"><span class="extras-dashboard-icon">&#x1F3C6;</span><div class="extras-dashboard-content"><div class="extras-dashboard-cat">Net Skins</div>';
+  if (ws.length) {
+    ws.forEach(function(r) {
+      var p = Number(String(r.Payout||0).replace(/[$,]/g,''));
+      html += '<div class="extras-dashboard-detail"><strong>'+r.Player+'</strong>'+(r.Hole?' &middot; Hole '+r.Hole:'')+(p?' &middot; <span style="color:var(--green);">$'+p.toFixed(2)+'</span>':'')+'</div>';
+    });
+  } else { html += '<div class="extras-dashboard-detail" style="color:var(--muted);">No skins entered yet</div>'; }
+  html += '</div></div>';
+  html += '<div class="extras-dashboard-row"><span class="extras-dashboard-icon">&#x1F4CD;</span><div class="extras-dashboard-content"><div class="extras-dashboard-cat">Closest to the Pin</div>';
+  if (wc.length) {
+    wc.forEach(function(r) {
+      var p = Number(String(r.Payout||0).replace(/[$,]/g,''));
+      html += '<div class="extras-dashboard-detail"><strong>'+r.Player+'</strong> &middot; Hole '+r.Hole+(r.Distance?' &middot; '+r.Distance:'')+(p?' &middot; <span style="color:var(--green);">$'+p.toFixed(2)+'</span>':'')+'</div>';
+    });
+  } else { html += '<div class="extras-dashboard-detail" style="color:var(--muted);">No CTP entered yet</div>'; }
+  html += '</div></div>';
+  return html;
 }
 
 function buildExtras() {
@@ -2234,79 +2254,37 @@ function buildExtras() {
   }
   var html = '';
   if (hasSkins) {
-    var skinsByPlayer = {};
-    SKINS_DATA.forEach(function(r) {
-      var name = String(r.Player||'').trim();
-      if (!name) return;
-      if (!skinsByPlayer[name]) skinsByPlayer[name] = {name:name, skins:0, payout:0};
-      skinsByPlayer[name].skins += Number(r.Skins||r['# Skins']||1);
-      skinsByPlayer[name].payout += Number(String(r.Payout||r['Payout ($)']||0).replace(/[$,]/g,''));
-    });
-    var skinsLeaders = Object.values(skinsByPlayer).sort(function(a,b){ return b.payout!==a.payout?b.payout-a.payout:b.skins-a.skins; });
+    var sbp = {};
+    SKINS_DATA.forEach(function(r){ var n=String(r.Player||'').trim(); if(!n) return; if(!sbp[n]) sbp[n]={name:n,skins:0,payout:0}; sbp[n].skins+=Number(r.Skins||1); sbp[n].payout+=Number(String(r.Payout||0).replace(/[$,]/g,'')); });
+    var sl = Object.values(sbp).sort(function(a,b){ return b.payout!==a.payout?b.payout-a.payout:b.skins-a.skins; });
     html += '<div class="section-header" style="margin-top:0"><span class="section-label" style="font-size:18px">Net Skins</span><div class="section-header-line"></div></div>';
-    html += '<div class="extras-card" style="margin-bottom:16px;"><div class="extras-card-title">Season Leaderboard</div>';
-    html += '<table class="extras-table"><thead><tr><th>#</th><th style="text-align:left">Player</th><th>Skins</th><th>Payout</th></tr></thead><tbody>';
-    skinsLeaders.forEach(function(p,i){
-      html += '<tr class="'+(i===0?'extras-leader':'')+'">' +
-        '<td style="color:var(--muted);font-size:12px;">'+(i+1)+'</td>' +
-        '<td style="text-align:left;font-weight:700;color:#f0f4f8;">'+p.name+'</td>' +
-        '<td style="color:var(--ice);font-family:\'Bebas Neue\',sans-serif;font-size:22px;">'+p.skins+'</td>' +
-        '<td style="color:var(--green);font-weight:700;">$'+p.payout.toFixed(2)+'</td></tr>';
-    });
+    html += '<div class="extras-card" style="margin-bottom:16px;"><div class="extras-card-title">Season Leaderboard</div><table class="extras-table"><thead><tr><th>#</th><th style="text-align:left">Player</th><th>Skins</th><th>Payout</th></tr></thead><tbody>';
+    sl.forEach(function(p,i){ html += '<tr class="'+(i===0?'extras-leader':'')+'"><td style="color:var(--muted);font-size:12px;">'+(i+1)+'</td><td style="text-align:left;font-weight:700;color:#f0f4f8;">'+p.name+'</td><td style="color:var(--ice);font-family:\'Bebas Neue\',sans-serif;font-size:22px;">'+p.skins+'</td><td style="color:var(--green);font-weight:700;">$'+p.payout.toFixed(2)+'</td></tr>'; });
     html += '</tbody></table></div>';
-    var skinsByWeek = {};
-    SKINS_DATA.forEach(function(r){ var w=String(r.Week||''); if(!skinsByWeek[w]) skinsByWeek[w]=[]; skinsByWeek[w].push(r); });
+    var sbw = {};
+    SKINS_DATA.forEach(function(r){ var w=String(r.Week||''); if(!sbw[w]) sbw[w]=[]; sbw[w].push(r); });
     html += '<div class="extras-card"><div class="extras-card-title">Week by Week</div>';
-    Object.keys(skinsByWeek).sort(function(a,b){return b-a;}).forEach(function(week){
-      var rows=skinsByWeek[week];
-      html += '<div class="extras-week-label">Week '+week+'</div>';
-      html += '<table class="extras-table" style="margin-bottom:12px;"><thead><tr><th style="text-align:left">Player</th><th>Hole</th><th>Skins</th><th>Payout</th></tr></thead><tbody>';
-      rows.forEach(function(r){
-        var payout=Number(String(r.Payout||r['Payout ($)']||0).replace(/[$,]/g,''));
-        html += '<tr><td style="text-align:left;font-weight:700;color:#f0f4f8;">'+(r.Player||'')+'</td>' +
-          '<td style="color:var(--gold);">'+(r.Hole||r['Hole(s)']||'—')+'</td>' +
-          '<td style="color:var(--ice);font-family:\'Bebas Neue\',sans-serif;font-size:20px;">'+(r.Skins||1)+'</td>' +
-          '<td style="color:var(--green);font-weight:700;">$'+payout.toFixed(2)+'</td></tr>';
-      });
+    Object.keys(sbw).sort(function(a,b){return b-a;}).forEach(function(week){
+      html += '<div class="extras-week-label">Week '+week+'</div><table class="extras-table" style="margin-bottom:12px;"><thead><tr><th style="text-align:left">Player</th><th>Hole</th><th>Skins</th><th>Payout</th></tr></thead><tbody>';
+      sbw[week].forEach(function(r){ var p=Number(String(r.Payout||0).replace(/[$,]/g,'')); html += '<tr><td style="text-align:left;font-weight:700;color:#f0f4f8;">'+(r.Player||'')+'</td><td style="color:var(--gold);">'+(r.Hole||'—')+'</td><td style="color:var(--ice);font-family:\'Bebas Neue\',sans-serif;font-size:20px;">'+(r.Skins||1)+'</td><td style="color:var(--green);font-weight:700;">$'+p.toFixed(2)+'</td></tr>'; });
       html += '</tbody></table>';
     });
     html += '</div>';
   }
   if (hasCTP) {
-    var ctpByPlayer = {};
-    CTP_DATA.forEach(function(r){
-      var name=String(r.Player||'').trim();
-      if(!name) return;
-      if(!ctpByPlayer[name]) ctpByPlayer[name]={name:name,wins:0,payout:0};
-      ctpByPlayer[name].wins++;
-      ctpByPlayer[name].payout+=Number(String(r.Payout||r['Payout ($)']||0).replace(/[$,]/g,''));
-    });
-    var ctpLeaders=Object.values(ctpByPlayer).sort(function(a,b){return b.wins!==a.wins?b.wins-a.wins:b.payout-a.payout;});
+    var cbp = {};
+    CTP_DATA.forEach(function(r){ var n=String(r.Player||'').trim(); if(!n) return; if(!cbp[n]) cbp[n]={name:n,wins:0,payout:0}; cbp[n].wins++; cbp[n].payout+=Number(String(r.Payout||0).replace(/[$,]/g,'')); });
+    var cl = Object.values(cbp).sort(function(a,b){ return b.wins!==a.wins?b.wins-a.wins:b.payout-a.payout; });
     html += '<div class="section-header" style="margin-top:20px"><span class="section-label" style="font-size:18px">Closest to the Pin</span><div class="section-header-line"></div></div>';
-    html += '<div class="extras-card" style="margin-bottom:16px;"><div class="extras-card-title">Season Leaderboard</div>';
-    html += '<table class="extras-table"><thead><tr><th>#</th><th style="text-align:left">Player</th><th>Wins</th><th>Payout</th></tr></thead><tbody>';
-    ctpLeaders.forEach(function(p,i){
-      html += '<tr class="'+(i===0?'extras-leader':'')+'">' +
-        '<td style="color:var(--muted);font-size:12px;">'+(i+1)+'</td>' +
-        '<td style="text-align:left;font-weight:700;color:#f0f4f8;">'+p.name+'</td>' +
-        '<td style="color:var(--ice);font-family:\'Bebas Neue\',sans-serif;font-size:22px;">'+p.wins+'</td>' +
-        '<td style="color:var(--green);font-weight:700;">$'+p.payout.toFixed(2)+'</td></tr>';
-    });
+    html += '<div class="extras-card" style="margin-bottom:16px;"><div class="extras-card-title">Season Leaderboard</div><table class="extras-table"><thead><tr><th>#</th><th style="text-align:left">Player</th><th>Wins</th><th>Payout</th></tr></thead><tbody>';
+    cl.forEach(function(p,i){ html += '<tr class="'+(i===0?'extras-leader':'')+'"><td style="color:var(--muted);font-size:12px;">'+(i+1)+'</td><td style="text-align:left;font-weight:700;color:#f0f4f8;">'+p.name+'</td><td style="color:var(--ice);font-family:\'Bebas Neue\',sans-serif;font-size:22px;">'+p.wins+'</td><td style="color:var(--green);font-weight:700;">$'+p.payout.toFixed(2)+'</td></tr>'; });
     html += '</tbody></table></div>';
-    var ctpByWeek={};
-    CTP_DATA.forEach(function(r){var w=String(r.Week||'');if(!ctpByWeek[w])ctpByWeek[w]=[];ctpByWeek[w].push(r);});
+    var cbw = {};
+    CTP_DATA.forEach(function(r){ var w=String(r.Week||''); if(!cbw[w]) cbw[w]=[]; cbw[w].push(r); });
     html += '<div class="extras-card"><div class="extras-card-title">Week by Week</div>';
-    Object.keys(ctpByWeek).sort(function(a,b){return b-a;}).forEach(function(week){
-      var rows=ctpByWeek[week];
-      html += '<div class="extras-week-label">Week '+week+'</div>';
-      html += '<table class="extras-table" style="margin-bottom:12px;"><thead><tr><th style="text-align:left">Player</th><th>Hole</th><th>Distance</th><th>Payout</th></tr></thead><tbody>';
-      rows.forEach(function(r){
-        var payout=Number(String(r.Payout||r['Payout ($)']||0).replace(/[$,]/g,''));
-        html += '<tr><td style="text-align:left;font-weight:700;color:#f0f4f8;">'+(r.Player||'')+'</td>' +
-          '<td style="color:var(--gold);">Hole '+(r.Hole||'—')+'</td>' +
-          '<td style="color:var(--ice);font-weight:700;">'+(r.Distance||r['Distance (ft/in)']||'—')+'</td>' +
-          '<td style="color:var(--green);font-weight:700;">$'+payout.toFixed(2)+'</td></tr>';
-      });
+    Object.keys(cbw).sort(function(a,b){return b-a;}).forEach(function(week){
+      html += '<div class="extras-week-label">Week '+week+'</div><table class="extras-table" style="margin-bottom:12px;"><thead><tr><th style="text-align:left">Player</th><th>Hole</th><th>Distance</th><th>Payout</th></tr></thead><tbody>';
+      cbw[week].forEach(function(r){ var p=Number(String(r.Payout||0).replace(/[$,]/g,'')); html += '<tr><td style="text-align:left;font-weight:700;color:#f0f4f8;">'+(r.Player||'')+'</td><td style="color:var(--gold);">Hole '+(r.Hole||'—')+'</td><td style="color:var(--ice);font-weight:700;">'+(r.Distance||'—')+'</td><td style="color:var(--green);font-weight:700;">$'+p.toFixed(2)+'</td></tr>'; });
       html += '</tbody></table>';
     });
     html += '</div>';
