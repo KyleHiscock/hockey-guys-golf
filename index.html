@@ -9,8 +9,8 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Condensed:wght@400;600;700;900&family=Barlow:wght@400;500;600;700;800&family=Inter+Tight:wght@500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=4.8.7">
-<link rel="stylesheet" href="theme-polished.css?v=4.8.7">
+<link rel="stylesheet" href="style.css?v=4.8.8">
+<link rel="stylesheet" href="theme-polished.css?v=4.8.8">
 </head>
 <body>
 
@@ -28,9 +28,12 @@
     <div class="hero-weather" id="hero-weather">
       <span class="weather-loading">Loading weather...</span>
     </div>
-    <div class="hero-pills">
-      <span class="pill">2-Man Best Ball</span><span class="pill">Match Play</span>
-      <span class="pill">9 Holes</span><span class="pill">2026 Season</span>
+    <div class="hero-format-line" aria-label="League format">
+      <span>2-Man Best Ball</span>
+      <span class="format-dot">&bull;</span>
+      <span>Match Play</span>
+      <span class="format-dot">&bull;</span>
+      <span>9 Holes</span>
     </div>
   </div>
 </div>
@@ -169,7 +172,7 @@
     var el = document.getElementById('hero-weather');
     if(!el) return;
     var cw = data.current_weather;
-    var html = '<span class="weather-current">' +
+    var html = '<span class="weather-current"><span class="weather-label">Current</span> ' +
       icon(cw.weathercode) + ' ' + Math.round(cw.temperature) + '&deg;F' +
       ' &nbsp;&middot;&nbsp; ' + desc(cw.weathercode) +
       ' &nbsp;&middot;&nbsp; Wind ' + Math.round(cw.windspeed) + 'mph ' + wdir(cw.winddirection) +
@@ -181,7 +184,7 @@
         var tPrecip = data.daily.precipitation_probability_max[i]||0;
         html += '<span class="weather-divider">|</span>' +
           '<span class="weather-tuesday">' +
-          (i===0?'Today':'Tue '+(tDate.getMonth()+1)+'/'+tDate.getDate()) + ': ' +
+          '<span class="weather-label">' + (i===0?'Today':'Tue '+(tDate.getMonth()+1)+'/'+tDate.getDate()) + '</span> ' +
           icon(data.daily.weathercode[i]) + ' ' +
           Math.round(data.daily.temperature_2m_max[i]) + '&deg;F' +
           (tPrecip>20?' &#x1F4A7; '+tPrecip+'%':'') +
@@ -197,8 +200,8 @@
 })();
 </script>
 
-<script src="public.js?v=4.8.7"></script>
-<script src="polish.js?v=4.8.7"></script>
+<script src="public.js?v=4.8.8"></script>
+<script src="polish.js?v=4.8.8"></script>
 
 </body>
 </html>
