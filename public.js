@@ -2129,16 +2129,18 @@ function buildScorecardHTML(r) {
   snap.forEach(function(p, pi) {
     var teamColor = pi < 2 ? 'rgba(0,84,164,0.25)' : 'rgba(215,25,32,0.2)';
     var grossTotal = 0; var hasAny = false;
+    var matchStrokes = strokes[pi];
     var cells = holes.map(function(h) {
       var g = getScoreForPlayerHole(scores, p, pi, h.hole);
       if (g !== null && !isNaN(g)) { grossTotal += g; hasAny = true; }
-      var hasStroke = holeGetsStroke(strokeSets[pi], h.hole);
+      var strokeCnt = holeStrokeCount(strokeSets[pi], h.hole);
       var sc = scoreColor(g, h.par);
-      var dot = hasStroke ? '<span style="color:var(--gold);font-size:8px;vertical-align:super;">●</span>' : '';
+      var dot = strokeCnt > 0 ? '<span style="color:var(--gold);font-size:8px;vertical-align:super;">' + '●'.repeat(Math.min(strokeCnt, 3)) + '</span>' : '';
       return '<td style="border:1px solid rgba(255,255,255,0.1);padding:5px 3px;text-align:center;font-size:13px;font-weight:600;' + sc + '">' + (g !== null && !isNaN(g) ? g : '—') + dot + '</td>';
     });
+    var strokeLabel = matchStrokes > 0 ? ' <span style="font-size:10px;color:var(--gold);font-weight:700;border:1px solid rgba(216,179,93,0.4);border-radius:999px;padding:1px 5px;margin-left:4px;">+' + matchStrokes + '</span>' : ' <span style="font-size:10px;color:var(--muted);font-weight:400;border:1px solid rgba(154,170,188,0.3);border-radius:999px;padding:1px 5px;margin-left:4px;">scratch</span>';
     html += '<tr style="background:' + teamColor + ';">';
-    html += '<td ' + namStyle + ' style="border:1px solid rgba(255,255,255,0.1);padding:5px 8px;text-align:left;font-size:12px;font-family:\'Inter Tight\',sans-serif;font-weight:700;white-space:nowrap;color:#f0f4f8;background:' + teamColor + ';">' + p.name + ' <span style="font-size:10px;color:var(--muted);font-weight:400;">(GHIN ' + (p.ghin||'—') + ')</span></td>';
+    html += '<td ' + namStyle + ' style="border:1px solid rgba(255,255,255,0.1);padding:5px 8px;text-align:left;font-size:12px;font-family:\'Inter Tight\',sans-serif;font-weight:700;white-space:nowrap;color:#f0f4f8;background:' + teamColor + ';">' + p.name + ' <span style="font-size:10px;color:var(--muted);font-weight:400;">(GHIN ' + (p.ghin||'—') + ')</span>' + strokeLabel + '</td>';
     html += cells.join('');
     html += '<td style="border:1px solid rgba(255,255,255,0.1);padding:5px 3px;text-align:center;font-size:13px;font-weight:700;color:#f0f4f8;">' + (hasAny ? grossTotal : '—') + '</td>';
     html += '</tr>';
