@@ -139,7 +139,7 @@
         <div class="login-sub">Bobby Drexler &amp; Kyle Hiscock</div>
         <input class="login-field" type="text" id="login-name" placeholder="Your name" autocomplete="off">
         <input class="login-field" type="password" id="login-pass" placeholder="Password" autocomplete="off" onkeydown="if(event.key==='Enter')doLogin()">
-        <input class="login-field" type="password" id="admin-api-key" placeholder="Admin API key (optional)" autocomplete="off">
+        <input class="login-field" type="password" id="admin-api-key" placeholder="Admin API key (required)" autocomplete="off" required onkeydown="if(event.key==='Enter')doLogin()">
         <button class="login-btn" onclick="doLogin()">🔐 Sign In</button>
         <div class="login-error" id="login-error">❌ Invalid name or password</div>
       </div>
@@ -341,8 +341,8 @@
 
 <div class="footer">Hockey Guys Golf League &nbsp;·&nbsp; 2026 Season &nbsp;·&nbsp; Twin Hills · Spencerport NY</div>
 
-<script src="admin.js?v=4.8-audit"></script>
-<script src="polish.js?v=4.8-audit"></script>
+<script src="admin.js?v=4.8.1"></script>
+<script src="polish.js?v=4.8.1"></script>
 
 </body>
 </html>

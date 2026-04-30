@@ -555,11 +555,20 @@ async function postLeagueAction(action, payload = {}) {
 }
 
 function getAdminKey() {
-  return localStorage.getItem('hggl2026_admin_key') || 'hggl2026-hiscock-drexler';
+  const key = localStorage.getItem('hggl2026_admin_key');
+  if (!key || !key.trim()) {
+    throw new Error('Admin API key required. Please sign in again with the API key.');
+  }
+  return key.trim();
 }
 
 function saveAdminKey(key) {
-  localStorage.setItem('hggl2026_admin_key', String(key || '').trim());
+  const cleanKey = String(key || '').trim();
+  if (!cleanKey) {
+    localStorage.removeItem('hggl2026_admin_key');
+    throw new Error('Admin API key required.');
+  }
+  localStorage.setItem('hggl2026_admin_key', cleanKey);
 }
 
 async function initLeagueSite() {
@@ -1667,23 +1676,52 @@ function removeLastResult() {
 function doLogin() {
   const name = document.getElementById('login-name').value.trim();
   const pass = document.getElementById('login-pass').value.trim();
+  const apiKeyField = document.getElementById('admin-api-key');
+  const enteredKey = apiKeyField ? apiKeyField.value.trim() : '';
+  const loginError = document.getElementById('login-error');
+
+  if (!enteredKey) {
+    if (loginError) {
+      loginError.textContent = '❌ Admin API key required';
+      loginError.style.display = 'block';
+    }
+    if (apiKeyField) apiKeyField.focus();
+    return;
+  }
+
   const match = COMMISSIONERS.find(c => c.name.toLowerCase() === name.toLowerCase() && c.password === pass);
   if(match) {
+    try {
+      saveAdminKey(enteredKey);
+    } catch (err) {
+      if (loginError) {
+        loginError.textContent = '❌ ' + err.message;
+        loginError.style.display = 'block';
+      }
+      if (apiKeyField) apiKeyField.focus();
+      return;
+    }
+
     currentUser = match.name;
-    const apiKeyField = document.getElementById('admin-api-key');
-    if(apiKeyField && apiKeyField.value.trim()) saveAdminKey(apiKeyField.value.trim());
     document.getElementById('login-panel').style.display = 'none';
     document.getElementById('commissioner-panel').style.display = 'block';
     document.getElementById('comm-user').textContent = '👋 Welcome, ' + match.name;
-    document.getElementById('login-error').style.display = 'none';
+    if (loginError) {
+      loginError.textContent = '❌ Invalid commissioner name or password';
+      loginError.style.display = 'none';
+    }
     document.getElementById('login-pass').value = '';
+    if (apiKeyField) apiKeyField.value = '';
     fetchLeagueDataFromSheets(true).then(function() {
       buildEntrySelects();
     }).catch(function() {
       buildEntrySelects();
     });
   } else {
-    document.getElementById('login-error').style.display = 'block';
+    if (loginError) {
+      loginError.textContent = '❌ Invalid commissioner name or password';
+      loginError.style.display = 'block';
+    }
   }
 }
 
