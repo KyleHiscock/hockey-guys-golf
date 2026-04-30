@@ -1656,9 +1656,17 @@ function doLogin() {
   const pass = document.getElementById('login-pass').value.trim();
   const match = COMMISSIONERS.find(c => c.name.toLowerCase() === name.toLowerCase() && c.password === pass);
   if(match) {
-    currentUser = match.name;
-    const apiKeyField = document.getElementById('admin-api-key');
-    if(apiKeyField && apiKeyField.value.trim()) saveAdminKey(apiKeyField.value.trim());
+  const apiKeyField = document.getElementById('admin-api-key');
+  const enteredKey = apiKeyField ? apiKeyField.value.trim() : '';
+
+  if (!enteredKey) {
+    document.getElementById('login-error').textContent = '❌ Admin API key required';
+    document.getElementById('login-error').style.display = 'block';
+    return;
+  }
+
+  saveAdminKey(enteredKey);
+  currentUser = match.name;
     document.getElementById('login-panel').style.display = 'none';
     document.getElementById('commissioner-panel').style.display = 'block';
     document.getElementById('comm-user').textContent = '👋 Welcome, ' + match.name;
