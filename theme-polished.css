@@ -120,3 +120,43 @@ body{background:linear-gradient(180deg,#101826 0%,#111827 42%,#0e1521 100%);font
     padding: 0 10px;
   }
 }
+
+
+/* V4.8.7 mobile stability: smoother ticker + less data-render flash */
+.ticker-track {
+  flex: 0 0 auto;
+  min-width: max-content;
+  will-change: transform;
+  backface-visibility: hidden;
+  transform: translate3d(0,0,0);
+}
+@keyframes ticker {
+  0% { transform: translate3d(0,0,0); }
+  100% { transform: translate3d(-50%,0,0); }
+}
+@media (max-width: 680px) {
+  .ticker-wrap {
+    display: flex !important;
+    width: 100%;
+    overflow: hidden;
+  }
+  .ticker-label {
+    flex: 0 0 auto;
+  }
+  .ticker-track {
+    animation-duration: 68s;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+  }
+}
+@media (max-width: 430px) {
+  .ticker-track {
+    animation-duration: 74s;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ticker-track {
+    animation: none !important;
+    transform: none !important;
+  }
+}

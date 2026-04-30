@@ -543,8 +543,10 @@ function saveAdminKey(key) {
 
 async function initLeagueSite() {
   loadState();
-  rebuildAll();
-  await fetchLeagueDataFromSheets(true);
+  const loadedFromSheets = await fetchLeagueDataFromSheets(true);
+  if (!loadedFromSheets) {
+    rebuildAll();
+  }
 }
 
 // ── LOCAL DATA + BACKUPS ──
@@ -699,7 +701,12 @@ function buildTicker() {
     });
   }
   const doubled = [...items,...items];
-  document.getElementById('ticker-track').innerHTML = doubled.join('');
+  const track = document.getElementById('ticker-track');
+  if (!track) return;
+  const html = doubled.join('');
+  if (track.dataset.tickerHtml === html) return;
+  track.dataset.tickerHtml = html;
+  track.innerHTML = html;
 }
 
 // ── STANDINGS ──

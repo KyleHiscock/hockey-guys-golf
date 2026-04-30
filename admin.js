@@ -577,8 +577,12 @@ function saveAdminKey(key) {
 
 async function initLeagueSite() {
   loadState();
-  rebuildAll();
-  await fetchLeagueDataFromSheets(true);
+  const loadedFromSheets = await fetchLeagueDataFromSheets(true);
+  if (!loadedFromSheets) {
+    rebuildAll();
+    if (typeof buildScheduledMatchSelect === 'function') buildScheduledMatchSelect();
+    if (typeof initCommissionerNoteEditor === 'function') initCommissionerNoteEditor();
+  }
 }
 
 // ── LOCAL DATA + BACKUPS ──
@@ -668,10 +672,15 @@ function resetSeasonData() {
 function buildTicker() {
   const sorted = getSortedStandings();
   const doubled = [...sorted,...sorted];
-  document.getElementById('ticker-track').innerHTML = doubled.map(t => {
+  const track = document.getElementById('ticker-track');
+  if (!track) return;
+  const html = doubled.map(t => {
     const logo = LOGOS[t.name] ? `<img src="${LOGOS[t.name]}" class="t-logo-sm" alt="${t.name}">` : '';
     return `<span class="ticker-item">${logo} ${t.name} <span class="record">${t.w}-${t.l}</span></span>`;
   }).join('');
+  if (track.dataset.tickerHtml === html) return;
+  track.dataset.tickerHtml = html;
+  track.innerHTML = html;
 }
 
 // ── STANDINGS ──
