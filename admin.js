@@ -1654,30 +1654,40 @@ function removeLastResult() {
 function doLogin() {
   const name = document.getElementById('login-name').value.trim();
   const pass = document.getElementById('login-pass').value.trim();
-  const match = COMMISSIONERS.find(c => c.name.toLowerCase() === name.toLowerCase() && c.password === pass);
-  if(match) {
-  const apiKeyField = document.getElementById('admin-api-key');
-  const enteredKey = apiKeyField ? apiKeyField.value.trim() : '';
 
-  if (!enteredKey) {
-    document.getElementById('login-error').textContent = '❌ Admin API key required';
-    document.getElementById('login-error').style.display = 'block';
-    return;
-  }
+  const match = COMMISSIONERS.find(c =>
+    c.name.toLowerCase() === name.toLowerCase() && c.password === pass
+  );
 
-  saveAdminKey(enteredKey);
-  currentUser = match.name;
+  if (match) {
+    const apiKeyField = document.getElementById('admin-api-key');
+    const enteredKey = apiKeyField ? apiKeyField.value.trim() : '';
+
+    if (!enteredKey) {
+      document.getElementById('login-error').textContent = '❌ Admin API key required';
+      document.getElementById('login-error').style.display = 'block';
+      return;
+    }
+
+    saveAdminKey(enteredKey);
+    currentUser = match.name;
+
     document.getElementById('login-panel').style.display = 'none';
     document.getElementById('commissioner-panel').style.display = 'block';
     document.getElementById('comm-user').textContent = '👋 Welcome, ' + match.name;
     document.getElementById('login-error').style.display = 'none';
+
     document.getElementById('login-pass').value = '';
+    if (apiKeyField) apiKeyField.value = '';
+
     fetchLeagueDataFromSheets(true).then(function() {
       buildEntrySelects();
     }).catch(function() {
       buildEntrySelects();
     });
+
   } else {
+    document.getElementById('login-error').textContent = '❌ Invalid commissioner name or password';
     document.getElementById('login-error').style.display = 'block';
   }
 }
