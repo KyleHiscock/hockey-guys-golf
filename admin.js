@@ -1795,10 +1795,16 @@ async function saveMatch() {
   t2.holesWon = (t2.holesWon || 0) + holeTotals.team2HolesWon;
   t2.holesLost = (t2.holesLost || 0) + holeTotals.team1HolesWon;
 
+  // Build playerLine — for absent players use their original name or "(absent)" so the line is never blank
+  function playerDisplayName(p) {
+    if (p.isAbsent) return p.absentPlayer || '(absent)';
+    if (p.isSub) return (p.absentPlayer || '') + '/sub:' + p.name;
+    return p.name || '(unknown)';
+  }
   const playerLine = [
-    players[0].name + ' & ' + players[1].name,
+    playerDisplayName(players[0]) + ' & ' + playerDisplayName(players[1]),
     'vs',
-    players[2].name + ' & ' + players[3].name
+    playerDisplayName(players[2]) + ' & ' + playerDisplayName(players[3])
   ].join(' ');
 
   const resultToSave = {
