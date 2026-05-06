@@ -74,16 +74,13 @@ let scorecardScores = {};  // "pid_hole" -> gross score string
 // ── HANDICAP ──
 // USGA Course Handicap formula:
 //   Course Handicap = Index × (Slope ÷ 113) + (Course Rating − Par)
-// For 9 holes we use half the 18-hole values, then round (0.5 rounds up):
-//   9-hole Course Handicap = round( Index × (Slope ÷ 113) / 2 + (Rating/2 − Par9) )
-// Where Par9 is the par for that specific 9 (front=36, back=35)
+// For 9 holes: compute the full 18-hole course handicap first, then halve and round.
+// This matches how scoring apps (and the USGA) handle 9-hole playing handicaps.
 function nineHoleHdcp(ghinIndex, side) {
   const idx = parseFloat(ghinIndex);
   if (isNaN(idx)) return null;
-  const par9 = side === 'front' ? COURSE.parFront : COURSE.parBack;
-  const raw = (idx * (COURSE.slope / 113) / 2) + (COURSE.rating / 2 - par9);
-  // Round normally, but 0.5 rounds up per USGA
-  return Math.floor(raw + 0.5);
+  const full18 = idx * (COURSE.slope / 113) + (COURSE.rating - COURSE.par18);
+  return Math.round(full18 / 2);
 }
 
 // Strokes each player gets relative to the lowest hdcp player
