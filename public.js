@@ -74,26 +74,31 @@ let scorecardScores = {};  // "pid_hole" -> gross score string
 // ── HANDICAP ──
 // USGA Course Handicap formula:
 //   Course Handicap = Index × (Slope ÷ 113) + (Course Rating − Par)
-// For 9 holes: compute the full 18-hole course handicap first, then halve and round.
-// This matches how scoring apps (and the USGA) handle 9-hole playing handicaps.
+// For 9 holes: compute full 18-hole course handicap first, then halve.
+// Raw (unrounded) value is used for stroke differential to match scoring app behavior.
 function nineHoleHdcp(ghinIndex, side) {
   const idx = parseFloat(ghinIndex);
   if (isNaN(idx)) return null;
   const full18 = idx * (COURSE.slope / 113) + (COURSE.rating - COURSE.par18);
   return Math.round(full18 / 2);
 }
+function nineHoleHdcpRaw(ghinIndex) {
+  const idx = parseFloat(ghinIndex);
+  if (isNaN(idx)) return null;
+  const full18 = idx * (COURSE.slope / 113) + (COURSE.rating - COURSE.par18);
+  return full18 / 2; // unrounded, for differential calc
+}
 
-// Strokes each player gets relative to the lowest hdcp player
-// Returns array of [strokes_p1a, strokes_p1b, strokes_p2a, strokes_p2b]
+// Strokes each player gets relative to the lowest hdcp player.
+// USGA match play method: subtract the lowest raw handicap first, then apply 90%.
 function calcPlayerStrokes(players, side) {
-  const hdcps = players.map(p => {
+  const raws = players.map(p => {
     const g = parseFloat(p.ghin);
-    return isNaN(g) ? null : nineHoleHdcp(g, side);
+    return isNaN(g) ? null : nineHoleHdcpRaw(g);
   });
-  const adjusted = hdcps.map(h => h !== null ? Math.round(h * 0.9) : null);
-  const valid = adjusted.filter(h => h !== null);
-  const minH = valid.length ? Math.min(...valid) : 0;
-  return adjusted.map(h => h !== null ? Math.max(0, h - minH) : 0);
+  const validRaws = raws.filter(h => h !== null);
+  const minRaw = validRaws.length ? Math.min(...validRaws) : 0;
+  return raws.map(h => h !== null ? Math.max(0, Math.round((h - minRaw) * 0.9)) : 0);
 }
 
 // Which holes on this 9 get strokes — returns Map of hole -> stroke count
