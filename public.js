@@ -74,25 +74,24 @@ let scorecardScores = {};  // "pid_hole" -> gross score string
 // ── HANDICAP ──
 // USGA Course Handicap formula:
 //   Course Handicap = Index × (Slope ÷ 113) + (Course Rating − Par)
-// For 9 holes: compute full 18-hole course handicap first, then halve.
-// Raw (unrounded) value is used for stroke differential to match scoring app behavior.
+// For 9 holes we use half the 18-hole values, then round (0.5 rounds up):
+//   9-hole Course Handicap = round( Index × (Slope ÷ 113) / 2 + (Rating/2 − Par9) )
+// Where Par9 is the par for that specific 9 (front=36, back=35)
 function nineHoleHdcp(ghinIndex, side) {
   const idx = parseFloat(ghinIndex);
   if (isNaN(idx)) return null;
-  const full18 = idx * (COURSE.slope / 113) + (COURSE.rating - COURSE.par18);
-  return Math.round(full18 / 2);
-}
-function nineHoleHdcpRaw(ghinIndex) {
-  const idx = parseFloat(ghinIndex);
-  if (isNaN(idx)) return null;
-  const full18 = idx * (COURSE.slope / 113) + (COURSE.rating - COURSE.par18);
-  return full18 / 2; // unrounded, for differential calc
+  const par9 = side === 'front' ? COURSE.parFront : COURSE.parBack;
+  const raw = (idx * (COURSE.slope / 113) / 2) + (COURSE.rating / 2 - par9);
+  // Round normally, but 0.5 rounds up per USGA
+  return Math.floor(raw + 0.5);
 }
 
 // Strokes each player gets relative to the lowest hdcp player.
-// USGA match play method: subtract the lowest raw handicap first, then apply 90%.
+// USGA match play method: subtract lowest raw handicap first, then apply 90%.
+// Absent players (isAbsent flag or empty name) are excluded from the low-ball calc.
 function calcPlayerStrokes(players, side) {
   const raws = players.map(p => {
+    if (p.isAbsent || !p.name || !p.name.trim()) return null;
     const g = parseFloat(p.ghin);
     return isNaN(g) ? null : nineHoleHdcpRaw(g);
   });
@@ -1927,7 +1926,8 @@ function computePlayerStats() {
     var wlCounted = {};
 
     allPlayers.forEach(function(p, playerIndex) {
-      if (!p.name || /^Player\s/i.test(p.name)) return;
+      // Skip absent players (no sub played) and generic placeholder names
+      if (p.isAbsent || !p.name || /^Player\s/i.test(p.name)) return;
       if (!players[p.name]) {
         players[p.name] = {
           name: p.name,
@@ -1957,9 +1957,12 @@ function computePlayerStats() {
       ps.team = p.team;
 
       if (!wlCounted[p.name]) {
-        if (p.won) ps.matchWins++;
-        else if (p.lost) ps.matchLosses++;
-        else ps.matchTies++;
+        // Subs get stats but their W/L record is not counted — only the regular player's record counts
+        if (!p.isSub) {
+          if (p.won) ps.matchWins++;
+          else if (p.lost) ps.matchLosses++;
+          else ps.matchTies++;
+        }
         wlCounted[p.name] = true;
       }
 

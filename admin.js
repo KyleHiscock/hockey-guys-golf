@@ -78,8 +78,7 @@ let scorecardFocusKey = null;  // "pid_hole" -> gross score string
 // ── HANDICAP ──
 // USGA Course Handicap formula:
 //   Course Handicap = Index × (Slope ÷ 113) + (Course Rating − Par)
-// For 9 holes: compute full 18-hole course handicap first, then halve.
-// Raw (unrounded) value is used for stroke differential to match scoring app behavior.
+// For 9 holes: compute full 18-hole course handicap first, then halve and round.
 function nineHoleHdcp(ghinIndex, side) {
   const idx = parseFloat(ghinIndex);
   if (isNaN(idx)) return null;
@@ -90,13 +89,15 @@ function nineHoleHdcpRaw(ghinIndex) {
   const idx = parseFloat(ghinIndex);
   if (isNaN(idx)) return null;
   const full18 = idx * (COURSE.slope / 113) + (COURSE.rating - COURSE.par18);
-  return full18 / 2; // unrounded, for differential calc
+  return full18 / 2;
 }
 
 // Strokes each player gets relative to the lowest hdcp player.
-// USGA match play method: subtract the lowest raw handicap first, then apply 90%.
+// USGA match play method: subtract lowest raw handicap first, then apply 90%.
+// Absent players (isAbsent flag or empty name/ghin) are excluded from the low-ball calc.
 function calcPlayerStrokes(players, side) {
   const raws = players.map(p => {
+    if (p.isAbsent || !p.name || !p.name.trim()) return null;
     const g = parseFloat(p.ghin);
     return isNaN(g) ? null : nineHoleHdcpRaw(g);
   });
@@ -1309,9 +1310,26 @@ async function loadSelectedResultForEdit() {
   document.getElementById('sc-team1').value = r.team1;
   document.getElementById('sc-team2').value = r.team2;
   const players = r.playersSnapshot || [];
+  resetAbsentUI();
   ['p1a','p1b','p2a','p2b'].forEach((id, idx) => {
-    document.getElementById(id+'-name').value = players[idx]?.name || '';
-    document.getElementById(id+'-ghin').value = players[idx]?.ghin || '';
+    const p = players[idx] || {};
+    if ((id === 'p1b' || id === 'p2b') && (p.isAbsent || p.isSub)) {
+      // Restore absent player's original name/ghin to the main fields
+      document.getElementById(id+'-name').value = p.absentPlayer || '';
+      document.getElementById(id+'-ghin').value = '';
+      const cb = document.getElementById(id+'-absent');
+      if (cb) cb.checked = true;
+      onAbsentChange(id);
+      if (p.isSub) {
+        const subNameEl = document.getElementById(id+'-sub-name');
+        const subGhinEl = document.getElementById(id+'-sub-ghin');
+        if (subNameEl) subNameEl.value = p.name || '';
+        if (subGhinEl) subGhinEl.value = p.ghin || '';
+      }
+    } else {
+      document.getElementById(id+'-name').value = p.name || '';
+      document.getElementById(id+'-ghin').value = p.ghin || '';
+    }
   });
   scorecardScores = {...(r.scoreSnapshot || {})};
   rebuildAll();
@@ -1322,13 +1340,66 @@ async function loadSelectedResultForEdit() {
   alert('Result loaded. Make your changes and save it again.');
 }
 
+// ── ABSENT / SUB HANDLING ──
+function onAbsentChange(slot) {
+  const absent = document.getElementById(slot + '-absent').checked;
+  const subFields = document.getElementById(slot + '-sub-fields');
+  const nameInput = document.getElementById(slot + '-name');
+  const ghinInput = document.getElementById(slot + '-ghin');
+  if (absent) {
+    subFields.style.display = 'flex';
+    nameInput.disabled = true;
+    ghinInput.disabled = true;
+    nameInput.style.opacity = '0.4';
+    ghinInput.style.opacity = '0.4';
+  } else {
+    subFields.style.display = 'none';
+    nameInput.disabled = false;
+    ghinInput.disabled = false;
+    nameInput.style.opacity = '';
+    ghinInput.style.opacity = '';
+    document.getElementById(slot + '-sub-name').value = '';
+    document.getElementById(slot + '-sub-ghin').value = '';
+  }
+  renderScorecard();
+}
+
+function getSlotAbsent(slot) {
+  const el = document.getElementById(slot + '-absent');
+  return el ? el.checked : false;
+}
+
+function resetAbsentUI() {
+  ['p1b','p2b'].forEach(slot => {
+    const cb = document.getElementById(slot + '-absent');
+    if (cb) cb.checked = false;
+    onAbsentChange(slot);
+  });
+}
+
 // ── SCORECARD CORE ──
 function getPlayers() {
+  // For each Player B slot: if absent with no sub, use empty placeholder (excluded from strokes).
+  // If absent with sub, use sub name/GHIN flagged as isSub.
+  function buildSlot(id, defaultName, team) {
+    const absent = getSlotAbsent(id);
+    if (absent) {
+      const subName = (document.getElementById(id + '-sub-name') || {}).value || '';
+      const subGhin = (document.getElementById(id + '-sub-ghin') || {}).value || '';
+      if (subName.trim()) {
+        return {id, name: subName.trim(), ghin: subGhin, team, isSub: true, absentPlayer: document.getElementById(id + '-name').value || ''};
+      }
+      // No sub — return empty slot so stroke calc ignores them
+      return {id, name: '', ghin: '', team, isAbsent: true, absentPlayer: document.getElementById(id + '-name').value || ''};
+    }
+    return {id, name: document.getElementById(id + '-name').value || defaultName, ghin: document.getElementById(id + '-ghin').value, team};
+  }
+
   return [
     {id:'p1a', name:document.getElementById('p1a-name').value||'Player 1A', ghin:document.getElementById('p1a-ghin').value, team:1},
-    {id:'p1b', name:document.getElementById('p1b-name').value||'Player 1B', ghin:document.getElementById('p1b-ghin').value, team:1},
+    buildSlot('p1b', 'Player 1B', 1),
     {id:'p2a', name:document.getElementById('p2a-name').value||'Player 2A', ghin:document.getElementById('p2a-ghin').value, team:2},
-    {id:'p2b', name:document.getElementById('p2b-name').value||'Player 2B', ghin:document.getElementById('p2b-ghin').value, team:2},
+    buildSlot('p2b', 'Player 2B', 2),
   ];
 }
 
@@ -1741,7 +1812,14 @@ async function saveMatch() {
     holesWon: { team1: holeTotals.team1HolesWon, team2: holeTotals.team2HolesWon },
     playerLine,
     holesPlayed: state.holesWithScores,
-    playersSnapshot: players.map(p => ({id:p.id, name:p.name, ghin:p.ghin, team:p.team})),
+    playersSnapshot: players.map(p => ({
+      id: p.id,
+      name: p.name,
+      ghin: p.ghin,
+      team: p.team,
+      ...(p.isSub ? {isSub: true, absentPlayer: p.absentPlayer || ''} : {}),
+      ...(p.isAbsent ? {isAbsent: true, absentPlayer: p.absentPlayer || ''} : {})
+    })),
     scoreSnapshot: {...scorecardScores},
     submittedBy: currentUser || ''
   };

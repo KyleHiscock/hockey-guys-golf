@@ -196,6 +196,19 @@
             <div><label class="field-label">Player B</label><input class="field-input" list="roster-options" type="text" id="p1b-name" placeholder="Name" oninput="renderScorecard()"></div>
             <div><label class="field-label">GHIN Index</label><input class="field-input" type="number" id="p1b-ghin" placeholder="e.g. 20.0" step="0.1" min="-10" max="54" oninput="renderScorecard()"></div>
           </div>
+          <div id="p1b-absent-row" style="margin-top:4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <label style="display:flex;align-items:center;gap:6px;font-family:'Barlow Condensed',sans-serif;font-size:12px;letter-spacing:1px;color:var(--muted);cursor:pointer;">
+              <input type="checkbox" id="p1b-absent" onchange="onAbsentChange('p1b')" style="width:14px;height:14px;accent-color:var(--gold);cursor:pointer;">
+              Player B absent
+            </label>
+            <div id="p1b-sub-fields" style="display:none;flex:1;min-width:260px;">
+              <div style="font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:1.5px;color:var(--gold);text-transform:uppercase;margin-bottom:4px;">Sub Player</div>
+              <div class="two-col" style="margin-top:0;">
+                <div><input class="field-input" list="roster-options" type="text" id="p1b-sub-name" placeholder="Sub name" oninput="renderScorecard()" style="font-size:13px;"></div>
+                <div><input class="field-input" type="number" id="p1b-sub-ghin" placeholder="Sub GHIN" step="0.1" min="-10" max="54" oninput="renderScorecard()" style="font-size:13px;"></div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- Team 2 -->
@@ -212,6 +225,19 @@
           <div class="two-col">
             <div><label class="field-label">Player B</label><input class="field-input" list="roster-options" type="text" id="p2b-name" placeholder="Name" oninput="renderScorecard()"></div>
             <div><label class="field-label">GHIN Index</label><input class="field-input" type="number" id="p2b-ghin" placeholder="e.g. 12.0" step="0.1" min="-10" max="54" oninput="renderScorecard()"></div>
+          </div>
+          <div id="p2b-absent-row" style="margin-top:4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <label style="display:flex;align-items:center;gap:6px;font-family:'Barlow Condensed',sans-serif;font-size:12px;letter-spacing:1px;color:var(--muted);cursor:pointer;">
+              <input type="checkbox" id="p2b-absent" onchange="onAbsentChange('p2b')" style="width:14px;height:14px;accent-color:var(--gold);cursor:pointer;">
+              Player B absent
+            </label>
+            <div id="p2b-sub-fields" style="display:none;flex:1;min-width:260px;">
+              <div style="font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:1.5px;color:var(--gold);text-transform:uppercase;margin-bottom:4px;">Sub Player</div>
+              <div class="two-col" style="margin-top:0;">
+                <div><input class="field-input" list="roster-options" type="text" id="p2b-sub-name" placeholder="Sub name" oninput="renderScorecard()" style="font-size:13px;"></div>
+                <div><input class="field-input" type="number" id="p2b-sub-ghin" placeholder="Sub GHIN" step="0.1" min="-10" max="54" oninput="renderScorecard()" style="font-size:13px;"></div>
+              </div>
+            </div>
           </div>
         </div>
 
