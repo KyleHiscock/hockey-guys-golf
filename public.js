@@ -438,7 +438,15 @@ function normalizeResultFromSheet(row) {
 
   let playerLine = row.PlayerLine || row['Player Line'] || row.playerLine || '';
   if (!playerLine && Array.isArray(playersSnapshot) && playersSnapshot.length >= 4) {
-    playerLine = `${playersSnapshot[0].name || playersSnapshot[0]['Player Name'] || 'Player A'} & ${playersSnapshot[1].name || playersSnapshot[1]['Player Name'] || 'Player B'} vs ${playersSnapshot[2].name || playersSnapshot[2]['Player Name'] || 'Player C'} & ${playersSnapshot[3].name || playersSnapshot[3]['Player Name'] || 'Player D'}`;
+    function snapDisplayName(p, fallback) {
+      if (p.isAbsent) return p.absentPlayer || '(absent)';
+      if (p.isSub) return (p.absentPlayer ? p.absentPlayer + '/' : '') + 'sub:' + (p.name || p['Player Name'] || fallback);
+      return p.name || p['Player Name'] || fallback;
+    }
+    playerLine = snapDisplayName(playersSnapshot[0], 'Player A') + ' & ' +
+      snapDisplayName(playersSnapshot[1], 'Player B') + ' vs ' +
+      snapDisplayName(playersSnapshot[2], 'Player C') + ' & ' +
+      snapDisplayName(playersSnapshot[3], 'Player D');
   }
 
   return {
@@ -467,7 +475,9 @@ function applyLeagueDataFromSheet(data) {
   TEAMS = buildTeamsFromSheet(data);
 
   if (data.schedule && data.schedule.length) {
-    SCHEDULE_WEEKS = buildScheduleFromSheet(data);
+    const built = buildScheduleFromSheet(data);
+    // Only replace if we actually got valid weeks back — never wipe the hardcoded schedule
+    if (built && built.length) SCHEDULE_WEEKS = built;
   }
 
   RESULTS = (data.results || [])
