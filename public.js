@@ -74,16 +74,18 @@ let scorecardScores = {};  // "pid_hole" -> gross score string
 // ── HANDICAP ──
 // USGA Course Handicap formula:
 //   Course Handicap = Index × (Slope ÷ 113) + (Course Rating − Par)
-// For 9 holes we use half the 18-hole values, then round (0.5 rounds up):
-//   9-hole Course Handicap = round( Index × (Slope ÷ 113) / 2 + (Rating/2 − Par9) )
-// Where Par9 is the par for that specific 9 (front=36, back=35)
+// For 9 holes: compute full 18-hole course handicap first, then halve and round.
 function nineHoleHdcp(ghinIndex, side) {
   const idx = parseFloat(ghinIndex);
   if (isNaN(idx)) return null;
-  const par9 = side === 'front' ? COURSE.parFront : COURSE.parBack;
-  const raw = (idx * (COURSE.slope / 113) / 2) + (COURSE.rating / 2 - par9);
-  // Round normally, but 0.5 rounds up per USGA
-  return Math.floor(raw + 0.5);
+  const full18 = idx * (COURSE.slope / 113) + (COURSE.rating - COURSE.par18);
+  return Math.round(full18 / 2);
+}
+function nineHoleHdcpRaw(ghinIndex) {
+  const idx = parseFloat(ghinIndex);
+  if (isNaN(idx)) return null;
+  const full18 = idx * (COURSE.slope / 113) + (COURSE.rating - COURSE.par18);
+  return full18 / 2;
 }
 
 // Strokes each player gets relative to the lowest hdcp player.
@@ -322,6 +324,7 @@ function buildPlayersSnapshotFromRow(row) {
     ]);
     if (name || ghin) players.push(normalizeSnapshotPlayer({ id: fallbackIds[i], name, ghin }, i, row));
   }
+  // If we got fewer than 4, pad with absent placeholders rather than discarding
   if (players.length >= 4) return players;
 
   const playerLine = getRowValue(row, ['PlayerLine', 'Player Line', 'playerLine']);
@@ -331,7 +334,13 @@ function buildPlayersSnapshotFromRow(row) {
       return normalizeSnapshotPlayer({ id: fallbackIds[i], name: name || ('Player ' + (i + 1)) }, i, row);
     });
   }
-  return [];
+
+  // Pad to 4 with empty absent placeholders so the result is never dropped
+  while (players.length < 4) {
+    const i = players.length;
+    players.push({ id: fallbackIds[i], name: '', ghin: '', team: i < 2 ? 1 : 2, isAbsent: true });
+  }
+  return players;
 }
 
 function getFlatScoreValue(row, playerNo, holeNo) {
@@ -403,8 +412,16 @@ function normalizeScorePayload(row) {
     [];
 
   playersSnapshot = parseLeagueJsonValue(playersSnapshot) || playersSnapshot || [];
-  if (!Array.isArray(playersSnapshot) || playersSnapshot.length < 4) {
+  if (!Array.isArray(playersSnapshot) || playersSnapshot.length < 2) {
     playersSnapshot = buildPlayersSnapshotFromRow(row);
+  } else if (playersSnapshot.length < 4) {
+    // Pad to 4 with absent placeholders
+    const fallbackIds = ['p1a','p1b','p2a','p2b'];
+    while (playersSnapshot.length < 4) {
+      const i = playersSnapshot.length;
+      playersSnapshot.push({ id: fallbackIds[i], name: '', ghin: '', team: i < 2 ? 1 : 2, isAbsent: true });
+    }
+    playersSnapshot = playersSnapshot.map(function(p, i) { return normalizeSnapshotPlayer(p || {}, i, row); });
   } else {
     playersSnapshot = playersSnapshot.map(function(p, i) { return normalizeSnapshotPlayer(p || {}, i, row); });
   }
@@ -475,9 +492,9 @@ function applyLeagueDataFromSheet(data) {
   TEAMS = buildTeamsFromSheet(data);
 
   if (data.schedule && data.schedule.length) {
-    const built = buildScheduleFromSheet(data);
-    // Only replace if we actually got valid weeks back — never wipe the hardcoded schedule
-    if (built && built.length) SCHEDULE_WEEKS = built;
+    const builtWeeks = buildScheduleFromSheet(data);
+    // Only replace if we got valid weeks — never wipe the hardcoded schedule with empty data
+    if (builtWeeks && builtWeeks.length) SCHEDULE_WEEKS = builtWeeks;
   }
 
   RESULTS = (data.results || [])
@@ -1929,14 +1946,20 @@ function computePlayerStats() {
       });
     }
 
-    // Use the same match-play stroke allocation shown on the scorecard so dashboard leaders
-    // agree with the visible player net totals.
+    // For stats (best/worst/avg net), use each player's own absolute handicap strokes.
+    var statsStrokeMaps = allPlayers.map(function(p) {
+      if (p.isAbsent || !p.name || !p.name.trim()) return new Map();
+      var g = parseFloat(p.ghin);
+      if (isNaN(g)) return new Map();
+      var ownHdcp = nineHoleHdcp(g, side);
+      return getStrokeHoles(ownHdcp, holes);
+    });
+    // Match-play relative strokes for hole-by-hole scoring.
     var playerStrokes = calcPlayerStrokes(allPlayers, side);
     var strokeMaps = allPlayers.map(function(p, i) { return getStrokeHoles(playerStrokes[i] || 0, holes); });
     var wlCounted = {};
 
     allPlayers.forEach(function(p, playerIndex) {
-      // Skip absent players (no sub played) and generic placeholder names
       if (p.isAbsent || !p.name || /^Player\s/i.test(p.name)) return;
       if (!players[p.name]) {
         players[p.name] = {
@@ -1967,7 +1990,6 @@ function computePlayerStats() {
       ps.team = p.team;
 
       if (!wlCounted[p.name]) {
-        // Subs get stats but their W/L record is not counted — only the regular player's record counts
         if (!p.isSub) {
           if (p.won) ps.matchWins++;
           else if (p.lost) ps.matchLosses++;
@@ -1984,7 +2006,7 @@ function computePlayerStats() {
       holes.forEach(function(h) {
         var gross = getScoreForPlayerHole(scores, p, playerIndex, h.hole);
         if (gross === null || isNaN(gross)) return;
-        var strokeCount = holeStrokeCount(strokeMaps[playerIndex], h.hole);
+        var strokeCount = holeStrokeCount(statsStrokeMaps[playerIndex], h.hole);
         var net = gross - strokeCount;
         var grossDiff = gross - h.par;
         var netDiff = net - h.par;

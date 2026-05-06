@@ -94,7 +94,7 @@ function nineHoleHdcpRaw(ghinIndex) {
 
 // Strokes each player gets relative to the lowest hdcp player.
 // USGA match play method: subtract lowest raw handicap first, then apply 90%.
-// Absent players (isAbsent flag or empty name/ghin) are excluded from the low-ball calc.
+// Absent players (isAbsent flag or empty name) are excluded from the low-ball calc.
 function calcPlayerStrokes(players, side) {
   const raws = players.map(p => {
     if (p.isAbsent || !p.name || !p.name.trim()) return null;
@@ -326,6 +326,7 @@ function buildPlayersSnapshotFromRow(row) {
     ]);
     if (name || ghin) players.push(normalizeSnapshotPlayer({ id: fallbackIds[i], name, ghin }, i, row));
   }
+  // If we got fewer than 4, pad with absent placeholders rather than discarding
   if (players.length >= 4) return players;
 
   const playerLine = getRowValue(row, ['PlayerLine', 'Player Line', 'playerLine']);
@@ -335,7 +336,13 @@ function buildPlayersSnapshotFromRow(row) {
       return normalizeSnapshotPlayer({ id: fallbackIds[i], name: name || ('Player ' + (i + 1)) }, i, row);
     });
   }
-  return [];
+
+  // Pad to 4 with empty absent placeholders so the result is never dropped
+  while (players.length < 4) {
+    const i = players.length;
+    players.push({ id: fallbackIds[i], name: '', ghin: '', team: i < 2 ? 1 : 2, isAbsent: true });
+  }
+  return players;
 }
 
 function getFlatScoreValue(row, playerNo, holeNo) {
@@ -407,8 +414,16 @@ function normalizeScorePayload(row) {
     [];
 
   playersSnapshot = parseLeagueJsonValue(playersSnapshot) || playersSnapshot || [];
-  if (!Array.isArray(playersSnapshot) || playersSnapshot.length < 4) {
+  if (!Array.isArray(playersSnapshot) || playersSnapshot.length < 2) {
     playersSnapshot = buildPlayersSnapshotFromRow(row);
+  } else if (playersSnapshot.length < 4) {
+    // Pad to 4 with absent placeholders
+    const fallbackIds = ['p1a','p1b','p2a','p2b'];
+    while (playersSnapshot.length < 4) {
+      const i = playersSnapshot.length;
+      playersSnapshot.push({ id: fallbackIds[i], name: '', ghin: '', team: i < 2 ? 1 : 2, isAbsent: true });
+    }
+    playersSnapshot = playersSnapshot.map(function(p, i) { return normalizeSnapshotPlayer(p || {}, i, row); });
   } else {
     playersSnapshot = playersSnapshot.map(function(p, i) { return normalizeSnapshotPlayer(p || {}, i, row); });
   }
@@ -485,7 +500,9 @@ function applyLeagueDataFromSheet(data) {
   });
 
   if (data.schedule && data.schedule.length) {
-    SCHEDULE_WEEKS = buildScheduleFromSheet(data);
+    const builtWeeks = buildScheduleFromSheet(data);
+    // Only replace if we got valid weeks — never wipe the hardcoded schedule with empty data
+    if (builtWeeks && builtWeeks.length) SCHEDULE_WEEKS = builtWeeks;
   }
 
   RESULTS = (data.results || [])
@@ -1314,7 +1331,6 @@ async function loadSelectedResultForEdit() {
   ['p1a','p1b','p2a','p2b'].forEach((id, idx) => {
     const p = players[idx] || {};
     if ((id === 'p1b' || id === 'p2b') && (p.isAbsent || p.isSub)) {
-      // Restore absent player's original name/ghin to the main fields
       document.getElementById(id+'-name').value = p.absentPlayer || '';
       document.getElementById(id+'-ghin').value = '';
       const cb = document.getElementById(id+'-absent');
@@ -1379,8 +1395,6 @@ function resetAbsentUI() {
 
 // ── SCORECARD CORE ──
 function getPlayers() {
-  // For each Player B slot: if absent with no sub, use empty placeholder (excluded from strokes).
-  // If absent with sub, use sub name/GHIN flagged as isSub.
   function buildSlot(id, defaultName, team) {
     const absent = getSlotAbsent(id);
     if (absent) {
@@ -1389,8 +1403,7 @@ function getPlayers() {
       if (subName.trim()) {
         return {id, name: subName.trim(), ghin: subGhin, team, isSub: true, absentPlayer: document.getElementById(id + '-name').value || ''};
       }
-      // No sub — return empty slot so stroke calc ignores them
-      return {id, name: '', ghin: '', team, isAbsent: true, absentPlayer: document.getElementById(id + '-name').value || ''};
+      return {id, name: document.getElementById(id + '-name').value || defaultName, ghin: '', team, isAbsent: true, absentPlayer: document.getElementById(id + '-name').value || defaultName};
     }
     return {id, name: document.getElementById(id + '-name').value || defaultName, ghin: document.getElementById(id + '-ghin').value, team};
   }
@@ -1795,7 +1808,6 @@ async function saveMatch() {
   t2.holesWon = (t2.holesWon || 0) + holeTotals.team2HolesWon;
   t2.holesLost = (t2.holesLost || 0) + holeTotals.team1HolesWon;
 
-  // Build playerLine — for absent players use their original name or "(absent)" so the line is never blank
   function playerDisplayName(p) {
     if (p.isAbsent) return p.absentPlayer || '(absent)';
     if (p.isSub) return (p.absentPlayer || '') + '/sub:' + p.name;
