@@ -140,7 +140,7 @@ function logoImg(name, cls, phCls) {
 
 // ── GOOGLE SHEETS SYNC ──
 // Live Apps Script endpoint. Uses JSONP so it works consistently on GitHub Pages, desktop, and mobile browsers.
-const LEAGUE_API_URL = 'https://script.google.com/macros/s/AKfycbz1V4hse07WKBr2a8yTs_gD6dfNkqRXmOvzA-Ewqzos736fBg9WY_bgNX_ZUcbfCN2WOA/exec';
+const LEAGUE_API_URL = 'https://script.google.com/macros/s/AKfycbziWusWiz2tWCEjZk4Z6lEBx_B-DWBVALqStsQBQyAP0GOaxXGcX9ibCL304HLAMgpb/exec';
 const USE_GOOGLE_SHEETS_SYNC = true;
 let LEAGUE_DATA_SOURCE = 'local';
 let LEAGUE_DATA_LAST_LOADED = '';
