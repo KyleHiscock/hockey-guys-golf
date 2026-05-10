@@ -1970,6 +1970,8 @@ function showCommTab(id, btn) {
   if(schedTab) schedTab.style.display = id==='schedule-tab' ? 'block' : 'none';
   const extrasTab = document.getElementById('extras-tab');
   if(extrasTab) extrasTab.style.display = id==='extras-tab' ? 'block' : 'none';
+  const attTab = document.getElementById('attendance-tab');
+  if(attTab) attTab.style.display = id==='attendance-tab' ? 'block' : 'none';
 }
 
 function show(id, btn) {

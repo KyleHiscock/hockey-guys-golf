@@ -835,6 +835,10 @@ function buildDashboard() {
         <div id="lr-dots" class="lr-dots"></div>
       </div>
     </div>
+    <div class="dash-card bar-attendance-card" style="margin-bottom:14px;">
+      <div class="dash-label">🍺 Bar Attendance Leaderboard</div>
+      ${(typeof buildAttendanceCardHTML === 'function') ? buildAttendanceCardHTML() : ''}
+    </div>
     <div class="dashboard-panel" style="margin-bottom:14px;"><div class="panel-title">Last Week&#39;s Extras</div><div id="extras-dashboard-content">${(typeof buildExtrasPanel === 'function') ? buildExtrasPanel() : ''}</div></div>
     <div class="dashboard-two">
       <div class="dashboard-panel"><div class="panel-title">Next Up${nextWeek ? ' · Week ' + nextWeek.week : ''}</div>${nextHtml || '<div class="dash-empty">This week is complete. See Results for match outcomes.</div>'}</div>

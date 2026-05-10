@@ -766,76 +766,130 @@ body{font-family:'Barlow',sans-serif;background:var(--dark);color:var(--text);mi
   }
 }
 
-/* V4.8.9 — League Leaders top-3 redesign */
-.leaders-top3-wrap {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 4px;
+/* V4.9 — Bar Attendance Leaderboard */
+.bar-attendance-card {
+  min-height: auto !important;
 }
-.leaders-category {
-  background: rgba(255,255,255,.04);
-  border: 1px solid rgba(255,255,255,.07);
-  border-radius: 10px;
-  padding: 7px 9px 8px;
+.bar-attendance-card::before {
+  background: var(--gold) !important;
 }
-.leaders-cat-label {
+.att-section {
+  margin-bottom: 4px;
+}
+.att-section-label {
   font-family: 'Barlow Condensed', sans-serif;
   font-size: 9.5px;
   font-weight: 800;
   letter-spacing: 1.8px;
   text-transform: uppercase;
   color: var(--gold, #d8b35d);
-  margin-bottom: 6px;
+  margin-bottom: 5px;
 }
-.leaders-cat-empty {
-  font-family: 'Barlow Condensed', sans-serif;
-  font-size: 12px;
-  color: var(--muted, #9aaabc);
+.att-divider {
+  height: 1px;
+  background: rgba(255,255,255,0.08);
+  margin: 8px 0;
 }
-.leaders-top3-row {
+.att-row {
   display: grid;
-  grid-template-columns: 22px 1fr auto;
+  grid-template-columns: 26px 1fr auto;
   align-items: center;
-  gap: 5px;
-  padding: 2px 0;
+  gap: 6px;
+  padding: 4px 0;
 }
-.leaders-top3-row + .leaders-top3-row {
-  border-top: 1px solid rgba(255,255,255,.05);
-  margin-top: 3px;
-  padding-top: 4px;
+.att-row + .att-row {
+  border-top: 1px solid rgba(255,255,255,0.05);
 }
-.leaders-medal {
-  font-size: 13px;
-  line-height: 1;
+.att-medal {
+  font-size: 14px;
   text-align: center;
+  line-height: 1;
 }
-.leaders-top3-name {
+.att-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.att-name {
   font-family: 'Inter Tight', 'Barlow', sans-serif;
   font-size: 12px;
   font-weight: 700;
-  color: var(--ice, #9fc9dc);
+  color: #f0f4f8;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
-.leaders-top3-val {
+.att-streak {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--gold, #d8b35d);
+  letter-spacing: 0.5px;
+}
+.att-perfect {
+  font-size: 11px;
+}
+.att-bar-wrap {
+  height: 4px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.att-bar {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.4s ease;
+}
+.att-count {
   font-family: 'Bebas Neue', sans-serif;
-  font-size: 15px;
+  font-size: 16px;
   color: #fff;
   line-height: 1;
   white-space: nowrap;
-  margin-left: 4px;
 }
-/* Make the leaders card slightly taller to fit top-3 */
-.league-leaders-card {
-  min-height: auto !important;
+.att-of {
+  font-size: 11px;
+  color: var(--muted, #9aaabc);
 }
+
+/* Admin attendance editor */
+.att-check-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 8px;
+}
+.att-check-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'Inter Tight', 'Barlow', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: #f0f4f8;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.att-check-label:hover {
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(216,179,93,0.35);
+}
+.att-check-label input:checked + span {
+  color: var(--gold, #d8b35d);
+}
+
 @media (max-width: 680px) {
-  .leaders-top3-name {
-    font-size: 11.5px;
+  .att-check-grid {
+    grid-template-columns: repeat(2, 1fr);
   }
-  .leaders-top3-val {
+  .att-count {
     font-size: 14px;
   }
 }
