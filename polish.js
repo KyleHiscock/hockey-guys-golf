@@ -71,56 +71,82 @@ function formatLastUpdated() {
 }
 
 // ── League Leaders ────────────────────────────────────────────────────────────
+
+// Returns an array of up to `n` ranked tiers for a sorted list.
+// Players tied at the same value share a rank slot.
+function getTopNTiers(sortedList, valueKey, n) {
+  const tiers = [];
+  let lastVal = null;
+  for (const p of sortedList) {
+    const val = typeof valueKey === 'function' ? valueKey(p) : p[valueKey];
+    if (lastVal !== null && Math.abs(val - lastVal) < 0.001) {
+      tiers[tiers.length - 1].players.push(p);
+    } else {
+      if (tiers.length >= n) break;
+      tiers.push({ value: val, players: [p] });
+      lastVal = val;
+    }
+  }
+  return tiers;
+}
+
 function getLeagueLeaders() {
   if (typeof computePlayerStats !== 'function') return null;
   const players = computePlayerStats();
   const list = Object.values(players).filter(p => p.roundsPlayed > 0);
   if (!list.length) return null;
 
-  const minGross = Math.min(...list.map(p => p.totalGross / p.roundsPlayed));
-  const lowGross = list.filter(p => Math.abs((p.totalGross / p.roundsPlayed) - minGross) < 0.001);
+  // Low Gross avg — ascending sort, top 3 tiers
+  const byGross = [...list].sort((a, b) =>
+    (a.totalGross / a.roundsPlayed) - (b.totalGross / b.roundsPlayed));
+  const lowGrossTiers = getTopNTiers(byGross, p => p.totalGross / p.roundsPlayed, 3);
 
-  const withNet = list.filter(p => (p.totalNet || 0) > 0 && p.roundsPlayed > 0);
-  let lowNet = [], minNet = null;
-  if (withNet.length) {
-    minNet = Math.min(...withNet.map(p => p.totalNet / p.roundsPlayed));
-    lowNet = withNet.filter(p => Math.abs((p.totalNet / p.roundsPlayed) - minNet) < 0.001);
-  }
+  // Low Net avg — ascending sort, top 3 tiers
+  const withNet = list.filter(p => (p.totalNet || 0) > 0);
+  const byNet = [...withNet].sort((a, b) =>
+    (a.totalNet / a.roundsPlayed) - (b.totalNet / b.roundsPlayed));
+  const lowNetTiers = getTopNTiers(byNet, p => p.totalNet / p.roundsPlayed, 3);
 
-  const maxBirdies = Math.max(...list.map(p => p.netBirdies || 0));
-  const mostBirdies = maxBirdies > 0 ? list.filter(p => (p.netBirdies || 0) === maxBirdies) : [];
+  // Most Net Birdies — descending sort, top 3 tiers
+  const withBirdies = list.filter(p => (p.netBirdies || 0) > 0);
+  const byBirdies = [...withBirdies].sort((a, b) => (b.netBirdies || 0) - (a.netBirdies || 0));
+  const mostBirdieTiers = getTopNTiers(byBirdies, p => p.netBirdies || 0, 3);
 
-  return {
-    lowGross: { players: lowGross, value: minGross },
-    lowNet: { players: lowNet, value: minNet },
-    mostBirdies: { players: mostBirdies, value: maxBirdies }
-  };
+  return { lowGrossTiers, lowNetTiers, mostBirdieTiers };
 }
 
-function formatLeaderNames(players) {
-  if (!players || !players.length) return 'TBD';
-  return players.map(p => p.name).join(' & ');
+const LEADER_MEDALS = ['🥇', '🥈', '🥉'];
+
+function buildLeaderCategory(label, tiers, formatVal) {
+  if (!tiers || !tiers.length) {
+    return '<div class="leaders-category">' +
+      '<div class="leaders-cat-label">' + label + '</div>' +
+      '<div class="leaders-cat-empty">—</div>' +
+    '</div>';
+  }
+  const rows = tiers.map((tier, i) => {
+    const medal = LEADER_MEDALS[i] || (i + 1);
+    const names = tier.players.map(p => escapeLeagueHtml(p.name)).join(' &amp; ');
+    const val = formatVal(tier.value);
+    return '<div class="leaders-top3-row">' +
+      '<span class="leaders-medal">' + medal + '</span>' +
+      '<span class="leaders-top3-name">' + names + '</span>' +
+      '<span class="leaders-top3-val">' + val + '</span>' +
+    '</div>';
+  }).join('');
+  return '<div class="leaders-category">' +
+    '<div class="leaders-cat-label">' + label + '</div>' +
+    rows +
+  '</div>';
 }
 
 function buildLeadersCardHTML() {
   const ll = getLeagueLeaders();
   if (!ll) return '<div class="dash-sub" style="margin-top:8px;">Leaders will appear after Week 1 scores are entered.</div>';
-  return '<div class="leaders-strip">' +
-    '<div class="leader-row">' +
-      '<span class="leader-cat">Low Gross</span>' +
-      '<span class="leader-val">' + (ll.lowGross.value !== null ? ll.lowGross.value.toFixed(1) : '—') + '</span>' +
-      '<span class="leader-name-sm">' + formatLeaderNames(ll.lowGross.players) + '</span>' +
-    '</div>' +
-    '<div class="leader-row">' +
-      '<span class="leader-cat">Low Net</span>' +
-      '<span class="leader-val">' + (ll.lowNet.value !== null ? ll.lowNet.value.toFixed(1) : '—') + '</span>' +
-      '<span class="leader-name-sm">' + formatLeaderNames(ll.lowNet.players) + '</span>' +
-    '</div>' +
-    '<div class="leader-row">' +
-      '<span class="leader-cat">Net Birdies</span>' +
-      '<span class="leader-val">' + (ll.mostBirdies.value > 0 ? ll.mostBirdies.value : '—') + '</span>' +
-      '<span class="leader-name-sm">' + formatLeaderNames(ll.mostBirdies.players) + '</span>' +
-    '</div>' +
+  return '<div class="leaders-top3-wrap">' +
+    buildLeaderCategory('Low Gross Avg', ll.lowGrossTiers, v => v.toFixed(1)) +
+    buildLeaderCategory('Low Net Avg', ll.lowNetTiers, v => v.toFixed(1)) +
+    buildLeaderCategory('Net Birdies', ll.mostBirdieTiers, v => v) +
   '</div>';
 }
 
