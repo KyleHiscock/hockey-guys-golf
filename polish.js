@@ -1,10 +1,9 @@
-// V4.9 polish layer — commissioner note + league leaders (top 3) + bar attendance leaderboard
-// buildDashboard, buildResults, buildSchedule are all handled by public.js
-// DO NOT add buildDashboard, buildResults, or buildSchedule here
+// V4.9 polish layer — commissioner note + league leaders (top 3) + bar attendance + handicap tracker
+// buildDashboard, buildResults, buildSchedule handled by public.js — do NOT add them here
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const COMMISSIONER_NOTE_KEY = 'hggl2026_commissioner_note';
-const ATTENDANCE_KEY        = 'hggl2026_bar_attendance';
+const ATTENDANCE_KEY        = 'hggl2026_bar_attendance';   // localStorage fallback only
 const DEFAULT_COMMISSIONER_NOTE = 'Week 1 starts Tuesday, May 5. Please arrive early, check in with your group, and make sure GHIN scores are posted after the round.';
 
 // Full player roster — keep in sync with DEFAULT_TEAMS in admin.js
@@ -20,7 +19,20 @@ const ALL_PLAYERS = [
 ];
 
 function escapeLeagueHtml(value) {
-  return String(value || '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+  return String(value || '').replace(/[&<>"']/g, ch =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+}
+
+// ── Shared live data stores (populated from Sheets) ───────────────────────────
+var ATTENDANCE_DATA_LIVE = null;
+var HANDICAP_DATA_LIVE   = null;
+
+function applyAttendanceFromSheet(data) {
+  ATTENDANCE_DATA_LIVE = (data.attendance || []).filter(r => r.Week && r.Player);
+}
+
+function applyHandicapFromSheet(data) {
+  HANDICAP_DATA_LIVE = (data.handicap || []).filter(r => r.Week && r.Player && r.GHINIndex !== '');
 }
 
 // ── Commissioner Note ─────────────────────────────────────────────────────────
@@ -117,8 +129,8 @@ function getLeagueLeaders() {
     (a.totalNet / a.roundsPlayed) - (b.totalNet / b.roundsPlayed));
   const lowNetTiers = getTopNTiers(byNet, p => p.totalNet / p.roundsPlayed, 3);
 
-  const withBirdies    = list.filter(p => (p.netBirdies || 0) > 0);
-  const byBirdies      = [...withBirdies].sort((a,b) => (b.netBirdies||0) - (a.netBirdies||0));
+  const withBirdies     = list.filter(p => (p.netBirdies || 0) > 0);
+  const byBirdies       = [...withBirdies].sort((a,b) => (b.netBirdies||0) - (a.netBirdies||0));
   const mostBirdieTiers = getTopNTiers(byBirdies, p => p.netBirdies || 0, 3);
 
   return { lowGrossTiers, lowNetTiers, mostBirdieTiers };
@@ -160,63 +172,56 @@ function buildLeadersCardHTML() {
 }
 
 // ── Bar Attendance ────────────────────────────────────────────────────────────
-// Storage format:
-//   { weeks: { "1": { "Ritzy": true, "Robby D": false, ... }, "2": {...} } }
-
 function getAttendanceData() {
+  if (ATTENDANCE_DATA_LIVE && ATTENDANCE_DATA_LIVE.length) {
+    const weeks = {};
+    ATTENDANCE_DATA_LIVE.forEach(r => {
+      const wk   = String(parseInt(r.Week, 10));
+      const name = String(r.Player || '').trim();
+      const came = String(r.AtBar || '').trim().toLowerCase() === 'yes';
+      if (!wk || !name) return;
+      if (!weeks[wk]) weeks[wk] = {};
+      weeks[wk][name] = came;
+    });
+    return { weeks, source: 'sheets' };
+  }
   try {
     const raw = localStorage.getItem(ATTENDANCE_KEY);
-    if (!raw) return { weeks: {} };
-    return JSON.parse(raw) || { weeks: {} };
+    if (!raw) return { weeks: {}, source: 'local' };
+    const parsed = JSON.parse(raw) || {};
+    return { weeks: parsed.weeks || {}, source: 'local' };
   } catch (e) {
-    return { weeks: {} };
+    return { weeks: {}, source: 'local' };
   }
 }
 
-function saveAttendanceData(data) {
-  try {
-    localStorage.setItem(ATTENDANCE_KEY, JSON.stringify(data));
-  } catch (e) {
-    console.warn('Could not save attendance data', e);
-  }
-}
-
-// Returns per-player summary across all weeks that have been entered
-// { name, weeksPlayed, weeksAtBar, streak, perfectSoFar }
 function computeAttendanceStats() {
-  const data    = getAttendanceData();
-  const weeks   = data.weeks || {};
+  const data     = getAttendanceData();
+  const weeks    = data.weeks || {};
   const weekNums = Object.keys(weeks).map(Number).sort((a,b) => a - b);
   if (!weekNums.length) return [];
 
   const stats = {};
   ALL_PLAYERS.forEach(name => {
-    stats[name] = { name, weeksTracked: 0, weeksAtBar: 0, streak: 0, streakActive: true };
+    stats[name] = { name, weeksTracked: 0, weeksAtBar: 0, streak: 0, perfectSoFar: false };
   });
 
   weekNums.forEach(wk => {
     const wkData = weeks[String(wk)] || {};
     ALL_PLAYERS.forEach(name => {
-      if (!(name in wkData)) return; // week not tracked for this player
-      const came = !!wkData[name];
+      if (!(name in wkData)) return;
       stats[name].weeksTracked++;
-      if (came) stats[name].weeksAtBar++;
+      if (wkData[name]) stats[name].weeksAtBar++;
     });
   });
 
-  // Streak: consecutive most-recent weeks at bar (scan weeks descending)
   ALL_PLAYERS.forEach(name => {
-    let streak = 0;
-    let active = true;
+    let streak = 0, active = true;
     for (let i = weekNums.length - 1; i >= 0; i--) {
-      const wk     = weekNums[i];
-      const wkData = weeks[String(wk)] || {};
-      if (!(name in wkData)) continue; // skip weeks not tracked for player
-      if (active && !!wkData[name]) {
-        streak++;
-      } else {
-        active = false;
-      }
+      const wkData = weeks[String(weekNums[i])] || {};
+      if (!(name in wkData)) continue;
+      if (active && wkData[name]) { streak++; }
+      else { active = false; }
     }
     stats[name].streak = streak;
     stats[name].perfectSoFar = stats[name].weeksTracked > 0 &&
@@ -229,92 +234,145 @@ function computeAttendanceStats() {
 function buildAttendanceCardHTML() {
   const all = computeAttendanceStats();
   if (!all.length) {
-    return '<div class="dash-sub" style="margin-top:8px;">Bar attendance tracking starts after Week 1. 🍺</div>';
+    return '<div class="dash-sub" style="margin-top:8px;">Bar attendance will appear after Week 1 is entered. 🍺</div>';
   }
 
-  // Sort by weeksAtBar desc, then streak desc, then alpha
   const sorted = [...all].sort((a,b) =>
     b.weeksAtBar - a.weeksAtBar || b.streak - a.streak || a.name.localeCompare(b.name));
 
   const top3    = sorted.slice(0, 3);
-  const bottom3 = sorted.slice(-3).reverse(); // worst first → reverse so worst is at bottom
+  const bottom3 = sorted.slice(-3).reverse();
 
   function attendRow(p, medal, isBottom) {
-    const streakBadge = p.streak >= 2
-      ? '<span class="att-streak">🔥' + p.streak + '</span>'
-      : '';
-    const perfectBadge = p.perfectSoFar
-      ? '<span class="att-perfect">🏅</span>'
-      : '';
-    const pct = p.weeksTracked > 0
-      ? Math.round((p.weeksAtBar / p.weeksTracked) * 100)
-      : 0;
+    const streakBadge  = p.streak >= 2 ? '<span class="att-streak">🔥' + p.streak + '</span>' : '';
+    const perfectBadge = p.perfectSoFar ? '<span class="att-perfect">🏅</span>' : '';
+    const pct      = p.weeksTracked > 0 ? Math.round((p.weeksAtBar / p.weeksTracked) * 100) : 0;
     const barColor = isBottom ? 'var(--red)' : 'var(--green)';
     const barWidth = Math.max(pct, 4);
-
     return '<div class="att-row">' +
       '<span class="att-medal">' + medal + '</span>' +
       '<div class="att-info">' +
         '<span class="att-name">' + escapeLeagueHtml(p.name) + perfectBadge + streakBadge + '</span>' +
-        '<div class="att-bar-wrap">' +
-          '<div class="att-bar" style="width:' + barWidth + '%;background:' + barColor + '"></div>' +
-        '</div>' +
+        '<div class="att-bar-wrap"><div class="att-bar" style="width:' + barWidth + '%;background:' + barColor + '"></div></div>' +
       '</div>' +
       '<span class="att-count">' + p.weeksAtBar + '<span class="att-of">/' + p.weeksTracked + '</span></span>' +
     '</div>';
   }
 
-  const topRows = top3.map((p, i) =>
-    attendRow(p, LEADER_MEDALS[i], false)).join('');
-
-  const bottomRows = [...bottom3].reverse().map((p, i) => {
-    // medals for bottom 3: 💀 style ranking (worst = last place)
-    const bottomMedals = ['😬','😅','🍺'];
-    return attendRow(p, bottomMedals[i] || '😬', true);
-  }).join('');
+  const topRows    = top3.map((p, i) => attendRow(p, LEADER_MEDALS[i], false)).join('');
+  const bottomMeds = ['😬','😅','🍺'];
+  const bottomRows = [...bottom3].reverse().map((p, i) => attendRow(p, bottomMeds[i] || '😬', true)).join('');
 
   return '<div class="att-section">' +
-      '<div class="att-section-label">🍺 Most Loyal</div>' +
-      topRows +
+      '<div class="att-section-label">🍺 Most Loyal</div>' + topRows +
     '</div>' +
     '<div class="att-divider"></div>' +
     '<div class="att-section">' +
-      '<div class="att-section-label">👻 Bar Ghosts</div>' +
-      bottomRows +
+      '<div class="att-section-label">👻 Bar Ghosts</div>' + bottomRows +
+    '</div>';
+}
+
+// ── Handicap Tracker ──────────────────────────────────────────────────────────
+function computeHandicapStats() {
+  if (!HANDICAP_DATA_LIVE || !HANDICAP_DATA_LIVE.length) return [];
+
+  const byPlayer = {};
+  HANDICAP_DATA_LIVE.forEach(r => {
+    const name = String(r.Player || '').trim();
+    const wk   = parseInt(r.Week, 10);
+    const idx  = parseFloat(r.GHINIndex);
+    if (!name || isNaN(wk) || isNaN(idx)) return;
+    if (!byPlayer[name]) byPlayer[name] = [];
+    byPlayer[name].push({ week: wk, index: idx });
+  });
+
+  const stats = [];
+  Object.entries(byPlayer).forEach(([name, entries]) => {
+    if (entries.length < 2) return;
+    entries.sort((a,b) => a.week - b.week);
+
+    // Dedupe: multiple entries same week → keep last
+    const deduped = [];
+    entries.forEach(e => {
+      const last = deduped[deduped.length - 1];
+      if (last && last.week === e.week) { last.index = e.index; }
+      else { deduped.push({ ...e }); }
+    });
+
+    if (deduped.length < 2) return;
+    const first   = deduped[0].index;
+    const current = deduped[deduped.length - 1].index;
+    const change  = parseFloat((current - first).toFixed(1));
+    stats.push({ name, first, current, change, history: deduped });
+  });
+
+  return stats;
+}
+
+function buildHandicapCardHTML() {
+  const all = computeHandicapStats();
+  if (!all.length) {
+    return '<div class="dash-sub" style="margin-top:8px;">Handicap trends appear after players have at least 2 weeks of scores.</div>';
+  }
+
+  // Most improved = biggest drop (negative change)
+  const improved = [...all].sort((a,b) => a.change - b.change).slice(0, 3);
+  // Most worsened = biggest rise (positive change)
+  const worsened = [...all].sort((a,b) => b.change - a.change).slice(0, 3);
+
+  function hdcpRow(p, medal) {
+    const sign       = p.change > 0 ? '+' : '';
+    const arrow      = p.change < 0 ? '↓' : p.change > 0 ? '↑' : '→';
+    const arrowColor = p.change < 0 ? 'var(--green)' : p.change > 0 ? 'var(--red)' : 'var(--muted)';
+    const changeStr  = sign + p.change.toFixed(1);
+    return '<div class="hcp-row">' +
+      '<span class="att-medal">' + medal + '</span>' +
+      '<div class="att-info">' +
+        '<span class="att-name">' + escapeLeagueHtml(p.name) + '</span>' +
+        '<span class="hcp-detail">' + p.first.toFixed(1) + ' → <strong style="color:#fff">' + p.current.toFixed(1) + '</strong></span>' +
+      '</div>' +
+      '<span class="hcp-change" style="color:' + arrowColor + '">' + arrow + ' ' + changeStr + '</span>' +
+    '</div>';
+  }
+
+  const worseMeds   = ['😬','😅','⛳'];
+  const improveRows = improved.map((p, i) => hdcpRow(p, LEADER_MEDALS[i])).join('');
+  const worsenRows  = worsened.map((p, i) => hdcpRow(p, worseMeds[i])).join('');
+
+  return '<div class="att-section">' +
+      '<div class="att-section-label">📉 Most Improved</div>' + improveRows +
+    '</div>' +
+    '<div class="att-divider"></div>' +
+    '<div class="att-section">' +
+      '<div class="att-section-label">📈 Going the Wrong Way</div>' + worsenRows +
     '</div>';
 }
 
 // ── Admin: Attendance Editor ──────────────────────────────────────────────────
-// Called from admin.html when the commissioner opens the Bar tab
-
 function buildAttendanceEditor() {
   const container = document.getElementById('attendance-tab');
   if (!container) return;
 
-  const data    = getAttendanceData();
-  const weeks   = data.weeks || {};
-
-  // Figure out which weeks have results so we can pre-populate the week selector
+  const data        = getAttendanceData();
+  const weeks       = data.weeks || {};
   const resultWeeks = (typeof RESULTS !== 'undefined' && RESULTS.length)
-    ? [...new Set(RESULTS.map(r => r.week).filter(Boolean))].sort((a,b)=>a-b)
+    ? [...new Set(RESULTS.map(r => r.week).filter(Boolean))].sort((a,b) => a - b)
     : [];
-
-  const trackedWeeks = Object.keys(weeks).map(Number).sort((a,b)=>a-b);
-  const allWeekNums  = [...new Set([...resultWeeks, ...trackedWeeks])].sort((a,b)=>a-b);
-  // Always include at least week 1 and whatever the highest result week is
+  const trackedWeeks = Object.keys(weeks).map(Number).sort((a,b) => a - b);
+  const allWeekNums  = [...new Set([...resultWeeks, ...trackedWeeks])].sort((a,b) => a - b);
   if (!allWeekNums.length) allWeekNums.push(1);
 
   const selectedWeek = window._attEditorWeek || allWeekNums[allWeekNums.length - 1] || 1;
   window._attEditorWeek = selectedWeek;
 
-  const weekOpts = allWeekNums.map(w =>
+  const weekOpts   = allWeekNums.map(w =>
     `<option value="${w}" ${w === selectedWeek ? 'selected' : ''}>Week ${w}</option>`).join('');
-
-  // Also allow adding a new week beyond tracked ones
-  const nextWeek = Math.max(...allWeekNums) + 1;
+  const nextWeek   = Math.max(...allWeekNums) + 1;
   const newWeekOpt = `<option value="${nextWeek}">Week ${nextWeek} (new)</option>`;
-
-  const wkData  = weeks[String(selectedWeek)] || {};
+  const wkData     = weeks[String(selectedWeek)] || {};
+  const syncNote   = (typeof USE_GOOGLE_SHEETS_SYNC !== 'undefined' && USE_GOOGLE_SHEETS_SYNC)
+    ? '<span style="color:var(--green);font-size:11px;letter-spacing:.5px;">● Synced to Google Sheets</span>'
+    : '<span style="color:var(--gold);font-size:11px;letter-spacing:.5px;">⚠ Local only — Sheets unavailable</span>';
 
   const checkboxes = ALL_PLAYERS.map(name => {
     const checked = wkData[name] === true ? 'checked' : '';
@@ -329,9 +387,10 @@ function buildAttendanceEditor() {
   container.innerHTML = `
     <div class="entry-card">
       <div class="entry-title">🍺 Bar Attendance</div>
-      <p style="font-family:'Barlow Condensed',sans-serif;font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.5;">
-        Check off who made it to the bar after the round. This updates the leaderboard on the public home page.
+      <p style="font-family:'Barlow Condensed',sans-serif;font-size:13px;color:var(--muted);margin-bottom:4px;line-height:1.5;">
+        Check off who made it to the bar. Saves to Google Sheets — either commissioner can enter from any device.
       </p>
+      <div style="margin-bottom:14px;">${syncNote}</div>
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
         <label class="field-label" style="margin:0;white-space:nowrap;">Week</label>
         <select class="field-select" id="att-week-select" style="flex:1;min-width:120px;max-width:200px;"
@@ -360,38 +419,58 @@ function attSelectAll(checked) {
   document.querySelectorAll('#attendance-tab input[type="checkbox"]').forEach(cb => cb.checked = checked);
 }
 
-function saveAttendanceWeek() {
+async function saveAttendanceWeek() {
   const weekEl = document.getElementById('att-week-select');
   const week   = parseInt(weekEl ? weekEl.value : (window._attEditorWeek || 1));
-  const data   = getAttendanceData();
-  if (!data.weeks) data.weeks = {};
+  const msg    = document.getElementById('att-save-msg');
 
-  const wkData = {};
-  ALL_PLAYERS.forEach(name => {
+  const players = ALL_PLAYERS.map(name => {
     const safeId = 'att_' + name.replace(/\s+/g,'_').replace(/[^a-zA-Z0-9_]/g,'');
     const cb     = document.getElementById(safeId);
-    wkData[name] = cb ? cb.checked : false;
+    return { name, atBar: cb ? cb.checked : false };
   });
 
-  data.weeks[String(week)] = wkData;
-  saveAttendanceData(data);
-
-  const msg = document.getElementById('att-save-msg');
-  if (msg) { msg.textContent = '✅ Week ' + week + ' attendance saved!'; msg.style.display = 'block'; }
-
-  // Refresh summary and rebuild dashboard card
-  const summaryEl = document.getElementById('att-summary-table');
-  if (summaryEl) summaryEl.innerHTML = buildAttendanceSummaryTable();
-  rebuildAll();
+  try {
+    if (typeof postLeagueAction === 'function' && USE_GOOGLE_SHEETS_SYNC) {
+      await postLeagueAction('saveAttendance', { week, players });
+      await fetchLeagueDataFromSheets(true);
+    } else {
+      let stored = {};
+      try { stored = JSON.parse(localStorage.getItem(ATTENDANCE_KEY) || '{}'); } catch(e) {}
+      if (!stored.weeks) stored.weeks = {};
+      const wkData = {};
+      players.forEach(p => { wkData[p.name] = p.atBar; });
+      stored.weeks[String(week)] = wkData;
+      localStorage.setItem(ATTENDANCE_KEY, JSON.stringify(stored));
+      rebuildAll();
+    }
+    if (msg) { msg.textContent = '✅ Week ' + week + ' attendance saved!'; msg.style.display = 'block'; }
+    const summaryEl = document.getElementById('att-summary-table');
+    if (summaryEl) summaryEl.innerHTML = buildAttendanceSummaryTable();
+  } catch (err) {
+    if (msg) { msg.textContent = '❌ Could not save: ' + err.message; msg.style.display = 'block'; }
+  }
 }
 
-function clearAttendanceWeek(week) {
+async function clearAttendanceWeek(week) {
   if (!confirm('Clear attendance for Week ' + week + '?')) return;
-  const data = getAttendanceData();
-  if (data.weeks) delete data.weeks[String(week)];
-  saveAttendanceData(data);
-  buildAttendanceEditor();
-  rebuildAll();
+  const players = ALL_PLAYERS.map(name => ({ name, atBar: false }));
+  try {
+    if (typeof postLeagueAction === 'function' && USE_GOOGLE_SHEETS_SYNC) {
+      await postLeagueAction('saveAttendance', { week, players });
+      await fetchLeagueDataFromSheets(true);
+    } else {
+      let stored = {};
+      try { stored = JSON.parse(localStorage.getItem(ATTENDANCE_KEY) || '{}'); } catch(e) {}
+      if (!stored.weeks) stored.weeks = {};
+      delete stored.weeks[String(week)];
+      localStorage.setItem(ATTENDANCE_KEY, JSON.stringify(stored));
+      rebuildAll();
+    }
+    buildAttendanceEditor();
+  } catch (err) {
+    alert('Could not clear: ' + err.message);
+  }
 }
 
 function buildAttendanceSummaryTable() {

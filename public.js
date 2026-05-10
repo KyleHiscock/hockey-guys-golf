@@ -835,9 +835,15 @@ function buildDashboard() {
         <div id="lr-dots" class="lr-dots"></div>
       </div>
     </div>
-    <div class="dash-card bar-attendance-card" style="margin-bottom:14px;">
-      <div class="dash-label">🍺 Bar Attendance Leaderboard</div>
-      ${(typeof buildAttendanceCardHTML === 'function') ? buildAttendanceCardHTML() : ''}
+    <div class="dashboard-grid dashboard-grid-two" style="margin-bottom:14px;">
+      <div class="dash-card bar-attendance-card">
+        <div class="dash-label">🍺 Bar Attendance</div>
+        ${(typeof buildAttendanceCardHTML === 'function') ? buildAttendanceCardHTML() : ''}
+      </div>
+      <div class="dash-card handicap-tracker-card">
+        <div class="dash-label">📊 Handicap Tracker</div>
+        ${(typeof buildHandicapCardHTML === 'function') ? buildHandicapCardHTML() : ''}
+      </div>
     </div>
     <div class="dashboard-panel" style="margin-bottom:14px;"><div class="panel-title">Last Week&#39;s Extras</div><div id="extras-dashboard-content">${(typeof buildExtrasPanel === 'function') ? buildExtrasPanel() : ''}</div></div>
     <div class="dashboard-two">

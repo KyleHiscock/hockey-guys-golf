@@ -514,6 +514,8 @@ function applyLeagueDataFromSheet(data) {
   }
 
   if (typeof applySkinsCtpFromSheet === 'function') applySkinsCtpFromSheet(data);
+  if (typeof applyAttendanceFromSheet === 'function') applyAttendanceFromSheet(data);
+  if (typeof applyHandicapFromSheet === 'function') applyHandicapFromSheet(data);
 
   LEAGUE_DATA_SOURCE = 'Google Sheets';
   LEAGUE_DATA_LAST_LOADED = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
