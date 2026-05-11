@@ -506,8 +506,20 @@ function applyLeagueDataFromSheet(data) {
   }
 
   if (typeof applySkinsCtpFromSheet === 'function') applySkinsCtpFromSheet(data);
+  if (typeof applyAttendanceFromSheet === 'function') applyAttendanceFromSheet(data);
+  if (typeof applyHandicapFromSheet === 'function') applyHandicapFromSheet(data);
   LEAGUE_DATA_SOURCE = 'Google Sheets';
   LEAGUE_DATA_LAST_LOADED = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
+
+  // Refresh attendance and handicap cards now that live data is loaded
+  const attCard = document.getElementById('bar-attendance-card');
+  if (attCard && typeof buildAttendanceCardHTML === 'function') {
+    attCard.innerHTML = '<div class="dash-label">🍺 Bar Attendance</div>' + buildAttendanceCardHTML();
+  }
+  const hcpCard = document.getElementById('handicap-tracker-card');
+  if (hcpCard && typeof buildHandicapCardHTML === 'function') {
+    hcpCard.innerHTML = '<div class="dash-label">📊 Handicap Tracker</div>' + buildHandicapCardHTML();
+  }
 }
 
 async function leagueJsonpRequest(action, payload = {}) {
@@ -836,11 +848,11 @@ function buildDashboard() {
       </div>
     </div>
     <div class="dashboard-grid dashboard-grid-two" style="margin-bottom:14px;">
-      <div class="dash-card bar-attendance-card">
+      <div class="dash-card bar-attendance-card" id="bar-attendance-card">
         <div class="dash-label">🍺 Bar Attendance</div>
         ${(typeof buildAttendanceCardHTML === 'function') ? buildAttendanceCardHTML() : ''}
       </div>
-      <div class="dash-card handicap-tracker-card">
+      <div class="dash-card handicap-tracker-card" id="handicap-tracker-card">
         <div class="dash-label">📊 Handicap Tracker</div>
         ${(typeof buildHandicapCardHTML === 'function') ? buildHandicapCardHTML() : ''}
       </div>
