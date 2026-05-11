@@ -509,6 +509,16 @@ function buildAttendanceSummaryTable() {
 function polishSectionCopy() {
   const standingsUpdated = document.getElementById('standings-updated');
   if (standingsUpdated) standingsUpdated.textContent = formatLastUpdated();
+
+  // Always refresh these cards on rebuild in case Sheets data has arrived
+  const attCard = document.getElementById('bar-attendance-card');
+  if (attCard && typeof buildAttendanceCardHTML === 'function') {
+    attCard.innerHTML = '<div class="dash-label">🍺 Bar Attendance</div>' + buildAttendanceCardHTML();
+  }
+  const hcpCard = document.getElementById('handicap-tracker-card');
+  if (hcpCard && typeof buildHandicapCardHTML === 'function') {
+    hcpCard.innerHTML = '<div class="dash-label">📊 Handicap Tracker</div>' + buildHandicapCardHTML();
+  }
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────

@@ -511,15 +511,22 @@ function applyLeagueDataFromSheet(data) {
   LEAGUE_DATA_SOURCE = 'Google Sheets';
   LEAGUE_DATA_LAST_LOADED = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
 
-  // Refresh attendance and handicap cards now that live data is loaded
-  const attCard = document.getElementById('bar-attendance-card');
-  if (attCard && typeof buildAttendanceCardHTML === 'function') {
-    attCard.innerHTML = '<div class="dash-label">🍺 Bar Attendance</div>' + buildAttendanceCardHTML();
+  // Refresh attendance and handicap cards after polish.js functions are guaranteed loaded
+  function refreshExtraCards() {
+    if (typeof applyAttendanceFromSheet === 'function') applyAttendanceFromSheet(data);
+    if (typeof applyHandicapFromSheet === 'function') applyHandicapFromSheet(data);
+    const attCard = document.getElementById('bar-attendance-card');
+    if (attCard && typeof buildAttendanceCardHTML === 'function') {
+      attCard.innerHTML = '<div class="dash-label">🍺 Bar Attendance</div>' + buildAttendanceCardHTML();
+    }
+    const hcpCard = document.getElementById('handicap-tracker-card');
+    if (hcpCard && typeof buildHandicapCardHTML === 'function') {
+      hcpCard.innerHTML = '<div class="dash-label">📊 Handicap Tracker</div>' + buildHandicapCardHTML();
+    }
   }
-  const hcpCard = document.getElementById('handicap-tracker-card');
-  if (hcpCard && typeof buildHandicapCardHTML === 'function') {
-    hcpCard.innerHTML = '<div class="dash-label">📊 Handicap Tracker</div>' + buildHandicapCardHTML();
-  }
+  // Try immediately, then again after scripts settle
+  refreshExtraCards();
+  setTimeout(refreshExtraCards, 800);
 }
 
 async function leagueJsonpRequest(action, payload = {}) {
