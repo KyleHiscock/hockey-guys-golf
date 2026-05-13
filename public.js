@@ -55,6 +55,35 @@ const DEFAULT_TEAMS = [
 
 let TEAMS = DEFAULT_TEAMS.map(t => ({...t}));
 
+function getOfficialRosterNameSet() {
+  var names = new Set();
+  DEFAULT_TEAMS.forEach(function(t) {
+    String(t.players || '').split('&').forEach(function(n) {
+      var cleaned = normalizePlayerStatName(n.trim());
+      if (cleaned) names.add(cleaned.toLowerCase());
+    });
+  });
+  return names;
+}
+
+function isOfficialRosterPlayerName(name) {
+  var cleaned = normalizePlayerStatName(name || '').toLowerCase();
+  if (!cleaned) return false;
+  return getOfficialRosterNameSet().has(cleaned);
+}
+
+var currentScoringRateMode = 'gross';
+
+function setScoringRateMode(mode, btn) {
+  currentScoringRateMode = mode === 'net' ? 'net' : 'gross';
+  if (btn && btn.parentNode) {
+    Array.from(btn.parentNode.querySelectorAll('.rate-toggle-btn')).forEach(function(b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+  }
+  buildStats();
+}
+
+
 let SCHEDULE_WEEKS = [
   {week:1, date:'May 5, 2026',  side:'Front 9', matchups:[
     {time:'4:20p', home:'Fairway Enforcers', away:'Rough Riders'},
@@ -68,7 +97,7 @@ let RESULTS = [];
 var SKINS_DATA = [];
 var CTP_DATA = [];
 const STORAGE_KEY = 'hggl_2026_state_v2';
-const HGL_FRONTEND_VERSION = 'v4.9.13-analytics-hub';
+const HGL_FRONTEND_VERSION = 'v4.9.14-net-rates';
 try { console.log('Hockey Guys Golf League frontend ' + HGL_FRONTEND_VERSION); } catch(e) {}
 let currentUser = null;
 let scorecardScores = {};  // "pid_hole" -> gross score string
@@ -1050,22 +1079,33 @@ function renderTeamBestBallCard(limit) {
   }).join('') + '</div>';
 }
 
-function computeScoringRates(playerStats) {
-  return Object.values(playerStats || {}).filter(function(p){ return p.totalHoles > 0; }).map(function(p){
-    var doublePlus = (p.doubles || 0) + (p.worse || 0);
+function computeScoringRates(playerStats, mode) {
+  var useNet = mode === 'net';
+  return Object.values(playerStats || {}).filter(function(p){
+    return p.totalHoles > 0 && isOfficialRosterPlayerName(p.name);
+  }).map(function(p){
+    var birdies = useNet ? (p.netBirdies || 0) : (p.birdies || 0);
+    var pars    = useNet ? (p.netPars || 0)    : (p.pars || 0);
+    var bogeys  = useNet ? (p.netBogeys || 0)  : (p.bogeys || 0);
+    var doubles = useNet ? (p.netDoubles || 0) : (p.doubles || 0);
+    var worse   = useNet ? (p.netWorse || 0)   : (p.worse || 0);
+    var doublePlus = doubles + worse;
     return {
       name: p.name,
       team: p.team,
       holes: p.totalHoles,
-      birdieRate: (p.birdies || 0) / p.totalHoles * 100,
-      parRate: (p.pars || 0) / p.totalHoles * 100,
-      bogeyRate: (p.bogeys || 0) / p.totalHoles * 100,
+      mode: useNet ? 'net' : 'gross',
+      birdieRate: birdies / p.totalHoles * 100,
+      parRate: pars / p.totalHoles * 100,
+      bogeyRate: bogeys / p.totalHoles * 100,
       doubleRate: doublePlus / p.totalHoles * 100,
-      parBetterRate: ((p.birdies || 0) + (p.pars || 0)) / p.totalHoles * 100,
+      parBetterRate: (birdies + pars) / p.totalHoles * 100,
       doublePlus: doublePlus,
-      birdies: p.birdies || 0,
-      pars: p.pars || 0,
-      bogeys: p.bogeys || 0
+      birdies: birdies,
+      pars: pars,
+      bogeys: bogeys,
+      doubles: doubles,
+      worse: worse
     };
   });
 }
@@ -1082,14 +1122,25 @@ function renderRateLeaderboard(title, rows, valueFn, suffix, invert) {
 }
 
 function renderScoringRatesSection(playerStats) {
-  var rows = computeScoringRates(playerStats);
+  var mode = currentScoringRateMode === 'net' ? 'net' : 'gross';
+  var rows = computeScoringRates(playerStats, mode);
   if (!rows.length) return '';
-  return '<div class="analytics-section"><div class="analytics-title">Birdie / Par / Bogey / Double Rates</div>' +
+  var isNet = mode === 'net';
+  var prefix = isNet ? 'Net ' : '';
+  var note = isNet
+    ? 'Net mode uses each roster player’s own individual 9-hole handicap strokes by hole. It does not use relative match-play strokes.'
+    : 'Gross mode uses raw hole scores versus par. Subs are excluded from these season leaderboards.';
+  return '<div class="analytics-section"><div class="analytics-title-row"><div class="analytics-title">Birdie / Par / Bogey / Double Rates <span class="rate-mode-pill">' + (isNet ? 'Net' : 'Gross') + '</span></div>' +
+    '<div class="rate-toggle" role="group" aria-label="Scoring rate mode">' +
+      '<button class="rate-toggle-btn' + (!isNet ? ' active' : '') + '" onclick="setScoringRateMode(\'gross\',this)">Gross</button>' +
+      '<button class="rate-toggle-btn' + (isNet ? ' active' : '') + '" onclick="setScoringRateMode(\'net\',this)">Net</button>' +
+    '</div></div>' +
+    '<div class="analytics-note">' + note + '</div>' +
     '<div class="analytics-grid analytics-grid-four">' +
-    renderRateLeaderboard('🐦 Birdie Machine', rows, function(r){ return r.birdieRate; }, '%', false) +
-    renderRateLeaderboard('🟢 Par King', rows, function(r){ return r.parRate; }, '%', false) +
-    renderRateLeaderboard('🧱 Bogey Avoidance', rows, function(r){ return r.doubleRate; }, '%', true) +
-    renderRateLeaderboard('💀 Double Trouble', rows, function(r){ return r.doubleRate; }, '%', false) +
+    renderRateLeaderboard('🐦 ' + prefix + 'Birdie Machine', rows, function(r){ return r.birdieRate; }, '%', false) +
+    renderRateLeaderboard('🟢 ' + prefix + 'Par King', rows, function(r){ return r.parRate; }, '%', false) +
+    renderRateLeaderboard('🧱 ' + prefix + 'Big Number Avoidance', rows, function(r){ return r.doubleRate; }, '%', true) +
+    renderRateLeaderboard('💀 ' + prefix + 'Double Trouble', rows, function(r){ return r.doubleRate; }, '%', false) +
     '</div></div>';
 }
 
@@ -2303,6 +2354,8 @@ function computePlayerStats() {
         id: s.id || s.playerId || fallbackId,
         ghin: s.ghin || s.GHIN || s['GHIN Index'] || s.index || '',
         team: fallbackTeam,
+        isSub: !!(s.isSub || s.sub || s.Sub || String(s.status || '').toLowerCase() === 'sub'),
+        isAbsent: !!(s.isAbsent || s.absent || s.Absent),
         won: won,
         lost: lost
       };
@@ -2323,6 +2376,8 @@ function computePlayerStats() {
           id: id,
           ghin: '',
           team: i < 2 ? result.team1 : result.team2,
+          isSub: /^sub:/i.test(parsedNames[i] || ''),
+          isAbsent: false,
           won: i < 2 ? result.winner === result.team1 : result.winner === result.team2,
           lost: i < 2 ? result.winner === result.team2 : result.winner === result.team1
         };
@@ -2336,7 +2391,7 @@ function computePlayerStats() {
     var wlCounted = {};
 
     allPlayers.forEach(function(p, playerIndex) {
-      if (p.isAbsent || !p.name || /^Player\s/i.test(p.name)) return;
+      if (p.isAbsent || !p.name || /^Player\s/i.test(p.name) || p.isSub || !isOfficialRosterPlayerName(p.name)) return;
       if (!players[p.name]) {
         players[p.name] = {
           name: p.name,
@@ -2359,6 +2414,10 @@ function computePlayerStats() {
           doubles: 0,
           worse: 0,
           netBirdies: 0,
+          netPars: 0,
+          netBogeys: 0,
+          netDoubles: 0,
+          netWorse: 0,
           holeScores: {}
         };
       }
@@ -2402,6 +2461,10 @@ function computePlayerStats() {
         else ps.worse++;
 
         if (netDiff <= -1) ps.netBirdies++;
+        else if (netDiff === 0) ps.netPars++;
+        else if (netDiff === 1) ps.netBogeys++;
+        else if (netDiff === 2) ps.netDoubles++;
+        else ps.netWorse++;
         if (!ps.holeScores[h.hole]) ps.holeScores[h.hole] = [];
         ps.holeScores[h.hole].push({ gross: gross, net: net, par: h.par });
       });
