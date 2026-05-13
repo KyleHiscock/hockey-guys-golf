@@ -71,7 +71,7 @@ let RESULTS = [];
 var SKINS_DATA = [];
 var CTP_DATA = [];
 const STORAGE_KEY = 'hggl_2026_state_v2';
-const HGL_FRONTEND_VERSION = 'v4.9.10-net-handicap-audit';
+const HGL_FRONTEND_VERSION = 'v4.9.11-ghin-matchplay-strokes';
 try { console.log('Hockey Guys Golf League frontend ' + HGL_FRONTEND_VERSION); } catch(e) {}
 let currentUser = null;
 let scorecardScores = {};
@@ -125,18 +125,27 @@ function nineHoleHdcpRaw(ghinIndex) {
   return full18 === null ? null : (full18 / 2);
 }
 
-// Strokes each player gets relative to the lowest 9-hole handicap player.
-// This mirrors the GHIN-style app flow shown in the league screenshots:
-// 18-hole course handicap rounded to 1 decimal → 9-hole handicap → compare to lowest → 90% → rounded playing strokes.
-// Absent players (isAbsent flag or empty name) are excluded from the low-ball calc.
+function roundedMatchPlayAllowance(ghinIndex, side) {
+  const raw9 = nineHoleHdcpRaw(ghinIndex);
+  if (raw9 === null) return null;
+
+  // Match-play allowance should mirror the scoring app/GHIN flow:
+  // 18-hole course handicap rounded to 1 decimal → raw 9-hole handicap → 90% allowance → rounded playing handicap.
+  // Then each player is compared to the lowest player in that specific match.
+  // This is separate from individual net/stat handicaps.
+  return Math.max(0, Math.round(raw9 * 0.9));
+}
+
+// Relative match-play strokes only.
+// Individual stat/net totals use calcPlayerStatStrokes() below instead.
 function calcPlayerStrokes(players, side) {
-  const nineHoleHandicaps = players.map(p => {
+  const matchAllowances = players.map(p => {
     if (p.isAbsent || !p.name || !p.name.trim()) return null;
-    return nineHoleHdcp(p.ghin, side);
+    return roundedMatchPlayAllowance(p.ghin, side);
   });
-  const validHandicaps = nineHoleHandicaps.filter(h => h !== null);
-  const minHandicap = validHandicaps.length ? Math.min(...validHandicaps) : 0;
-  return nineHoleHandicaps.map(h => h !== null ? Math.max(0, Math.round((h - minHandicap) * 0.9)) : 0);
+  const validAllowances = matchAllowances.filter(h => h !== null);
+  const minAllowance = validAllowances.length ? Math.min(...validAllowances) : 0;
+  return matchAllowances.map(h => h !== null ? Math.max(0, h - minAllowance) : 0);
 }
 
 // Individual net-stat handicap for player stat cards / low-net leaders.
