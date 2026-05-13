@@ -71,7 +71,7 @@ let RESULTS = [];
 var SKINS_DATA = [];
 var CTP_DATA = [];
 const STORAGE_KEY = 'hggl_2026_state_v2';
-const HGL_FRONTEND_VERSION = 'v4.9.12-ghin-unified-handicap';
+const HGL_FRONTEND_VERSION = 'v4.9.13-analytics-hub';
 try { console.log('Hockey Guys Golf League frontend ' + HGL_FRONTEND_VERSION); } catch(e) {}
 let currentUser = null;
 let scorecardScores = {};
@@ -815,6 +815,279 @@ function getSortedStandings() {
   );
 }
 
+
+
+// ── ANALYTICS HUB HELPERS (v4.9.13) ──────────────────────────────────────────
+function analyticsSideKey(result) {
+  return String(result && result.side || '').toLowerCase().indexOf('back') >= 0 ? 'back' : 'front';
+}
+
+function analyticsHoles(result) {
+  return analyticsSideKey(result) === 'front' ? COURSE.front : COURSE.back;
+}
+
+function resultHasHoleScores(result) {
+  return !!(result && result.scoreSnapshot && Object.keys(result.scoreSnapshot).length);
+}
+
+function getResultMatchContext(result) {
+  var snap = getResultSnapshotPlayers(result);
+  var holes = analyticsHoles(result);
+  var side = analyticsSideKey(result);
+  var scores = (result && result.scoreSnapshot) ? result.scoreSnapshot : {};
+  var strokes = calcPlayerStrokes(snap, side);
+  var strokeSets = snap.map(function(p, i) { return getStrokeHoles(strokes[i] || 0, holes); });
+  return { snap: snap, holes: holes, side: side, scores: scores, strokes: strokes, strokeSets: strokeSets };
+}
+
+function computeResultTeamBestBall(result) {
+  if (!resultHasHoleScores(result)) return null;
+  var ctx = getResultMatchContext(result);
+  if (!ctx.snap || ctx.snap.length < 4) return null;
+  var teams = [
+    { name: result.team1, idxs: [0,1], total: 0, holes: 0 },
+    { name: result.team2, idxs: [2,3], total: 0, holes: 0 }
+  ];
+  ctx.holes.forEach(function(h) {
+    teams.forEach(function(team) {
+      var nets = team.idxs.map(function(pi) {
+        var g = getScoreForPlayerHole(ctx.scores, ctx.snap[pi], pi, h.hole);
+        if (g === null || isNaN(g)) return null;
+        return g - holeStrokeCount(ctx.strokeSets[pi], h.hole);
+      }).filter(function(v){ return v !== null; });
+      if (nets.length) {
+        team.total += Math.min.apply(null, nets);
+        team.holes++;
+      }
+    });
+  });
+  return teams;
+}
+
+function computeTeamBestBallAnalytics() {
+  var stats = {};
+  DEFAULT_TEAMS.forEach(function(t){ stats[t.name] = { name:t.name, rounds:0, total:0, best:Infinity, worst:-Infinity, scores:[] }; });
+  (RESULTS || []).forEach(function(r){
+    var teams = computeResultTeamBestBall(r);
+    if (!teams) return;
+    teams.forEach(function(team){
+      if (!team.name || !team.holes) return;
+      if (!stats[team.name]) stats[team.name] = { name:team.name, rounds:0, total:0, best:Infinity, worst:-Infinity, scores:[] };
+      stats[team.name].rounds++;
+      stats[team.name].total += team.total;
+      stats[team.name].scores.push({ week: r.week, score: team.total, opponent: normalizeTeamName(team.name) === normalizeTeamName(r.team1) ? r.team2 : r.team1 });
+      if (team.total < stats[team.name].best) stats[team.name].best = team.total;
+      if (team.total > stats[team.name].worst) stats[team.name].worst = team.total;
+    });
+  });
+  return Object.values(stats).map(function(t){
+    t.avg = t.rounds ? (t.total / t.rounds) : null;
+    if (t.best === Infinity) t.best = null;
+    if (t.worst === -Infinity) t.worst = null;
+    return t;
+  }).sort(function(a,b){
+    if (a.avg === null && b.avg === null) return a.name.localeCompare(b.name);
+    if (a.avg === null) return 1;
+    if (b.avg === null) return -1;
+    return a.avg - b.avg || a.name.localeCompare(b.name);
+  });
+}
+
+function computeMatchContribution(result) {
+  if (!resultHasHoleScores(result)) return null;
+  var ctx = getResultMatchContext(result);
+  if (!ctx.snap || ctx.snap.length < 4) return null;
+  var totals = getResultPlayerTotals(result);
+  var players = ctx.snap.map(function(p, i){
+    var displayName = normalizePlayerStatName(p.name || p['Player Name'] || ('Player ' + (i+1)));
+    var totalInfo = totals[i] || {};
+    return {
+      index: i,
+      name: displayName,
+      team: i < 2 ? result.team1 : result.team2,
+      contrib: 0,
+      solo: 0,
+      teamHoleWins: 0,
+      gross: totalInfo.gross,
+      net: totalInfo.net,
+      hasScores: !!totalInfo.hasScores
+    };
+  });
+  var teamRows = [
+    { name: result.team1, idxs: [0,1], bestBall: 0, holes: 0 },
+    { name: result.team2, idxs: [2,3], bestBall: 0, holes: 0 }
+  ];
+  ctx.holes.forEach(function(h) {
+    var teamBest = [];
+    var teamWinners = [];
+    teamRows.forEach(function(team, ti){
+      var entries = team.idxs.map(function(pi){
+        var g = getScoreForPlayerHole(ctx.scores, ctx.snap[pi], pi, h.hole);
+        if (g === null || isNaN(g)) return null;
+        return { pi: pi, net: g - holeStrokeCount(ctx.strokeSets[pi], h.hole) };
+      }).filter(Boolean);
+      if (!entries.length) { teamBest[ti] = null; teamWinners[ti] = []; return; }
+      var minNet = Math.min.apply(null, entries.map(function(e){ return e.net; }));
+      var winners = entries.filter(function(e){ return e.net === minNet; }).map(function(e){ return e.pi; });
+      teamBest[ti] = minNet;
+      teamWinners[ti] = winners;
+      team.bestBall += minNet;
+      team.holes++;
+      winners.forEach(function(pi){ players[pi].contrib++; });
+      if (winners.length === 1) players[winners[0]].solo++;
+    });
+    if (teamBest[0] !== null && teamBest[1] !== null && teamBest[0] !== teamBest[1]) {
+      var winningTeamIndex = teamBest[0] < teamBest[1] ? 0 : 1;
+      teamWinners[winningTeamIndex].forEach(function(pi){ players[pi].teamHoleWins++; });
+    }
+  });
+  var numericNets = players.filter(function(p){ return typeof p.net === 'number' && isFinite(p.net); }).map(function(p){ return p.net; });
+  var lowNet = numericNets.length ? Math.min.apply(null, numericNets) : null;
+  var winningTeam = getDisplayedResultInfo(result).winner || result.winner || '';
+  players.forEach(function(p){
+    var score = (p.contrib * 2) + (p.solo * 1.5) + (p.teamHoleWins * 1.25);
+    if (lowNet !== null && p.net === lowNet) score += 5;
+    if (winningTeam && normalizeTeamName(p.team) === normalizeTeamName(winningTeam)) score += 1;
+    if (typeof p.net === 'number') score += Math.max(0, 45 - p.net) * 0.05;
+    p.mvpScore = score;
+  });
+  var mvp = players.filter(function(p){ return p.hasScores; }).sort(function(a,b){
+    return b.mvpScore - a.mvpScore || b.contrib - a.contrib || b.solo - a.solo || (a.net || 999) - (b.net || 999);
+  })[0] || null;
+  return { players: players, teams: teamRows, mvp: mvp, lowNet: lowNet };
+}
+
+function renderMatchAnalytics(result) {
+  var data = computeMatchContribution(result);
+  if (!data || !data.mvp) return '';
+  function teamCarryHtml(team) {
+    var ps = team.idxs.map(function(pi){ return data.players[pi]; }).filter(function(p){ return p && p.hasScores; });
+    if (!ps.length) return '';
+    var sorted = ps.slice().sort(function(a,b){ return b.contrib - a.contrib || a.name.localeCompare(b.name); });
+    var top = sorted[0];
+    var bottom = sorted[sorted.length - 1];
+    var badge = '🤝 Balanced Attack';
+    if (sorted.length > 1 && (top.contrib - bottom.contrib) >= 3) badge = '🎒 ' + escapeLeagueHtml(top.name) + ' carried the bag';
+    else if (sorted.length > 1 && (top.contrib - bottom.contrib) === 2) badge = '🛟 ' + escapeLeagueHtml(bottom.name) + ' got saved a few times';
+    return '<div class="carry-team"><div class="carry-team-name">' + escapeLeagueHtml(team.name) + '</div>' +
+      '<div class="carry-bars">' + ps.map(function(p){ return '<span><b>' + escapeLeagueHtml(p.name) + '</b> ' + p.contrib + '/9</span>'; }).join('') + '</div>' +
+      '<div class="carry-badge">' + badge + '</div></div>';
+  }
+  var m = data.mvp;
+  return '<div class="match-analytics-box">' +
+    '<div class="match-mvp-line"><span>🏆 Match MVP</span><b>' + escapeLeagueHtml(m.name) + '</b><em>' +
+      (typeof m.gross === 'number' ? m.gross + ' gross' : '— gross') + ' / ' +
+      (typeof m.net === 'number' ? m.net + ' net' : '— net') + ' · counted on ' + m.contrib + ' of 9 best-ball holes</em></div>' +
+    '<div class="carry-meter-grid">' + data.teams.map(teamCarryHtml).join('') + '</div>' +
+  '</div>';
+}
+
+function renderLatestMvpLine(result) {
+  var data = computeMatchContribution(result);
+  if (!data || !data.mvp) return '';
+  return '<div class="latest-week-mvp">🏆 MVP: <b>' + escapeLeagueHtml(data.mvp.name) + '</b> · ' + data.mvp.contrib + '/9 counted</div>';
+}
+
+function renderTeamBestBallCard(limit) {
+  var rows = computeTeamBestBallAnalytics().filter(function(t){ return t.rounds > 0; });
+  if (!rows.length) return '<div class="dash-empty">Team best-ball stats will populate after scorecards are saved.</div>';
+  var useRows = limit ? rows.slice(0, limit) : rows;
+  return '<div class="team-bb-list">' + useRows.map(function(t, i){
+    var trend = '';
+    if (t.scores.length >= 2) {
+      var last = t.scores[t.scores.length - 1].score;
+      var prev = t.scores[t.scores.length - 2].score;
+      trend = last < prev ? '🔥' : last > prev ? '🧊' : '➖';
+    }
+    return '<div class="team-bb-row"><div class="team-bb-rank">' + (i+1) + '</div>' +
+      logoImg(t.name, 'team-bb-logo', 'team-bb-placeholder') +
+      '<div class="team-bb-name"><b>' + escapeLeagueHtml(t.name) + '</b><span>' + t.rounds + ' round' + (t.rounds === 1 ? '' : 's') + (trend ? ' · ' + trend : '') + '</span></div>' +
+      '<div class="team-bb-metrics"><b>' + t.avg.toFixed(1) + '</b><span>Avg</span></div>' +
+      '<div class="team-bb-metrics"><b>' + t.best + '</b><span>Best</span></div>' +
+      '<div class="team-bb-metrics"><b>' + t.worst + '</b><span>Worst</span></div></div>';
+  }).join('') + '</div>';
+}
+
+function computeScoringRates(playerStats) {
+  return Object.values(playerStats || {}).filter(function(p){ return p.totalHoles > 0; }).map(function(p){
+    var doublePlus = (p.doubles || 0) + (p.worse || 0);
+    return {
+      name: p.name,
+      team: p.team,
+      holes: p.totalHoles,
+      birdieRate: (p.birdies || 0) / p.totalHoles * 100,
+      parRate: (p.pars || 0) / p.totalHoles * 100,
+      bogeyRate: (p.bogeys || 0) / p.totalHoles * 100,
+      doubleRate: doublePlus / p.totalHoles * 100,
+      parBetterRate: ((p.birdies || 0) + (p.pars || 0)) / p.totalHoles * 100,
+      doublePlus: doublePlus,
+      birdies: p.birdies || 0,
+      pars: p.pars || 0,
+      bogeys: p.bogeys || 0
+    };
+  });
+}
+
+function renderRateLeaderboard(title, rows, valueFn, suffix, invert) {
+  if (!rows.length) return '';
+  var sorted = rows.slice().sort(function(a,b){
+    var va = valueFn(a), vb = valueFn(b);
+    return invert ? va - vb : vb - va;
+  }).slice(0,5);
+  return '<div class="rate-board"><div class="rate-title">' + title + '</div>' + sorted.map(function(r, i){
+    return '<div class="rate-row"><span class="rate-rank">' + (i+1) + '</span><b>' + escapeLeagueHtml(r.name) + '</b><em>' + valueFn(r).toFixed(1) + suffix + '</em></div>';
+  }).join('') + '</div>';
+}
+
+function renderScoringRatesSection(playerStats) {
+  var rows = computeScoringRates(playerStats);
+  if (!rows.length) return '';
+  return '<div class="analytics-section"><div class="analytics-title">Birdie / Par / Bogey / Double Rates</div>' +
+    '<div class="analytics-grid analytics-grid-four">' +
+    renderRateLeaderboard('🐦 Birdie Machine', rows, function(r){ return r.birdieRate; }, '%', false) +
+    renderRateLeaderboard('🟢 Par King', rows, function(r){ return r.parRate; }, '%', false) +
+    renderRateLeaderboard('🧱 Bogey Avoidance', rows, function(r){ return r.doubleRate; }, '%', true) +
+    renderRateLeaderboard('💀 Double Trouble', rows, function(r){ return r.doubleRate; }, '%', false) +
+    '</div></div>';
+}
+
+function computePowerRankings() {
+  var bbRows = computeTeamBestBallAnalytics();
+  var bbMap = {};
+  bbRows.forEach(function(t){ bbMap[t.name] = t; });
+  return TEAMS.map(function(t){
+    var bb = bbMap[t.name] || {};
+    var holesWon = parseInt(t.holesWon || 0, 10) || 0;
+    var holesLost = parseInt(t.holesLost || 0, 10) || 0;
+    var diff = holesWon - holesLost;
+    var streak = getTeamStreak(t.name);
+    var streakBonus = streak ? (streak.type === 'W' ? streak.count * 6 : streak.type === 'L' ? -streak.count * 5 : 0) : 0;
+    var bbScore = bb.avg ? (48 - bb.avg) * 4 : 0;
+    var score = ((t.w || 0) * 70) - ((t.l || 0) * 18) + (holesWon * 3.5) + (diff * 2.5) + bbScore + streakBonus;
+    return { name:t.name, record:(t.w || 0) + '-' + (t.l || 0), w:t.w || 0, l:t.l || 0, holesWon:holesWon, diff:diff, bbAvg:bb.avg || null, score:score, streak:streak };
+  }).sort(function(a,b){
+    return b.score - a.score || b.w - a.w || b.holesWon - a.holesWon || (a.bbAvg || 99) - (b.bbAvg || 99);
+  });
+}
+
+function renderPowerRankingsCard() {
+  var rows = computePowerRankings();
+  if (!rows.length) return '<div class="dash-empty">Power rankings will populate after results are posted.</div>';
+  return '<div class="power-rankings-list">' + rows.map(function(t, i){
+    var bbText = t.bbAvg ? t.bbAvg.toFixed(1) + ' BB Avg' : 'No BB Avg yet';
+    var trend = t.streak ? streakBadge(t.streak) : '';
+    return '<div class="power-row"><div class="power-rank">' + (i+1) + '</div>' +
+      logoImg(t.name, 'power-logo', 'power-placeholder') +
+      '<div class="power-team"><b>' + escapeLeagueHtml(t.name) + '</b><span>' + t.record + ' · ' + t.holesWon + ' HW · ' + bbText + '</span></div>' +
+      '<div class="power-score">' + Math.round(t.score) + '</div>' + trend + '</div>';
+  }).join('') + '<div class="power-note">Formula: record, holes won, hole differential, team best-ball average, and recent form.</div></div>';
+}
+
+function renderStatsAnalyticsSections(playerStats) {
+  return '<div class="analytics-section"><div class="analytics-title">Team Best-Ball Average</div>' + renderTeamBestBallCard() + '</div>' +
+    renderScoringRatesSection(playerStats);
+}
+
 // ── DASHBOARD ──
 function buildDashboard() {
   const container = document.getElementById('dashboard-container');
@@ -882,6 +1155,10 @@ function buildDashboard() {
         <div id="latest-week-results" class="latest-week-results-wrap">${latestWeekResults}</div>
       </div>
     </div>
+    <div class="dashboard-grid dashboard-grid-two" style="margin-bottom:14px;">
+      <div class="dash-card power-rankings-card"><div class="dash-label">⚡ Power Rankings</div>${renderPowerRankingsCard()}</div>
+      <div class="dash-card team-bestball-card"><div class="dash-label">🏌️ Team Best-Ball Avg</div>${renderTeamBestBallCard(4)}</div>
+    </div>
     <div class="dashboard-panel" style="margin-bottom:14px;"><div class="panel-title">Last Week&#39;s Extras</div><div id="extras-dashboard-content">${(typeof buildExtrasPanel === 'function') ? buildExtrasPanel() : ''}</div></div>
     <div class="dashboard-two">
       <div class="dashboard-panel"><div class="panel-title">Next Up${nextWeek ? ' · Week ' + nextWeek.week : ''}</div>${nextHtml || '<div class="dash-empty">This week is complete. See Results for match outcomes.</div>'}</div>
@@ -925,6 +1202,7 @@ function renderLatestWeekResultsList(results) {
       '<div class="latest-week-body">' +
         '<div class="latest-week-matchup">' + team1Html + '<span class="latest-week-vs">vs</span>' + team2Html + '</div>' +
         (winnerName ? '<div class="latest-week-winner">Winner: ' + escapeLeagueHtml(winnerName) + '</div>' : '<div class="latest-week-winner">Tie / pending</div>') +
+        renderLatestMvpLine(r) +
         playersHtml +
       '</div>' +
     '</div>';
@@ -1193,6 +1471,7 @@ function buildResults() {
       const t1w = displayInfo.winner === r.team1;
       const t2w = displayInfo.winner === r.team2;
       const playerSummary = renderPlayerScoreSummary(r);
+      const matchAnalytics = renderMatchAnalytics(r);
       return '<div class="result-card">' +
         '<div class="result-teams">' +
         '<div class="result-team">' + logoImg(r.team1,'result-logo','result-placeholder') +
@@ -1202,6 +1481,7 @@ function buildResults() {
         logoImg(r.team2,'result-logo','result-placeholder')+'</div></div>' +
         '<div class="result-detail">'+escapeLeagueHtml(r.playerLine)+'</div>' +
         playerSummary +
+        matchAnalytics +
       '<div style="text-align:right;padding:4px 0 2px;">' +
       (function(){ var scId = escapeLeagueHtml(String(r.resultId || ('w'+r.week+'_'+r.team1+'_'+r.team2)).replace(/[^a-zA-Z0-9_-]/g,'')); return '<button onclick="toggleScorecard(this,\''+scId+'\')" ' +
       'style="background:transparent;border:1px solid rgba(216,179,93,0.4);color:var(--gold);' +
@@ -2373,6 +2653,9 @@ function buildStats() {
       '<div class="leader-name">' + (bestRound&&bestRound.bestGross!==Infinity?bestRound.name:'TBD') + '</div>' +
       '<div class="leader-label">Best Round</div>' +
     '</div>';
+
+  var statsAnalyticsEl = document.getElementById('stats-analytics-container');
+  if (statsAnalyticsEl) statsAnalyticsEl.innerHTML = renderStatsAnalyticsSections(players);
 
   // Filter & sort
   let filtered = currentStatFilter === 'leaders'

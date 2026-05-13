@@ -236,3 +236,42 @@ body{background:linear-gradient(180deg,#101826 0%,#111827 42%,#0e1521 100%);font
 /* V4.9.2 — keep scorecard handicap row from colliding with dashboard handicap-tracker rows */
 .scorecard tr.scorecard-hcp-row{display:table-row;}
 .scorecard tr.scorecard-hcp-row td{display:table-cell;}
+
+
+
+/* Analytics Hub v4.9.13 */
+.analytics-section{margin:18px 0 22px;padding:18px;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.025);}
+.analytics-title{font-family:'Bebas Neue',sans-serif;letter-spacing:3px;color:var(--gold);font-size:19px;margin-bottom:12px;}
+.analytics-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
+.analytics-grid-four{grid-template-columns:repeat(4,minmax(0,1fr));}
+.team-bb-list,.power-rankings-list{display:flex;flex-direction:column;gap:8px;}
+.team-bb-row,.power-row{display:grid;grid-template-columns:auto auto 1fr auto auto auto;align-items:center;gap:10px;padding:10px 12px;border:1px solid rgba(255,255,255,.08);border-radius:14px;background:rgba(7,12,20,.38);}
+.power-row{grid-template-columns:auto auto 1fr auto auto;}
+.team-bb-rank,.power-rank{font-family:'Bebas Neue',sans-serif;color:var(--ice);font-size:20px;min-width:22px;text-align:center;}
+.team-bb-logo,.power-logo{width:34px;height:34px;object-fit:contain;border-radius:7px;background:rgba(255,255,255,.08);}
+.team-bb-placeholder,.power-placeholder{width:34px;height:34px;border-radius:7px;background:rgba(159,201,220,.14);display:inline-block;}
+.team-bb-name b,.power-team b{font-size:15px;color:#fff;display:block;line-height:1.05;}
+.team-bb-name span,.power-team span{font-size:12px;color:var(--muted);font-weight:700;}
+.team-bb-metrics{text-align:right;min-width:48px;}
+.team-bb-metrics b,.power-score{font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--gold);display:block;}
+.team-bb-metrics span{font-size:10px;text-transform:uppercase;color:var(--muted);letter-spacing:1px;font-weight:800;}
+.power-note{font-size:11px;color:var(--muted);padding:8px 4px 0;font-weight:700;}
+.rate-board{border:1px solid rgba(255,255,255,.08);border-radius:14px;background:rgba(7,12,20,.34);padding:12px;}
+.rate-title{font-family:'Bebas Neue',sans-serif;letter-spacing:2px;color:var(--gold);font-size:15px;margin-bottom:8px;}
+.rate-row{display:grid;grid-template-columns:22px 1fr auto;gap:8px;align-items:center;padding:7px 0;border-top:1px solid rgba(255,255,255,.06);font-size:13px;}
+.rate-row:first-of-type{border-top:0;}
+.rate-rank{font-family:'Bebas Neue',sans-serif;color:var(--ice);font-size:17px;text-align:center;}
+.rate-row b{color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.rate-row em{font-style:normal;color:var(--ice);font-weight:800;}
+.match-analytics-box{margin:10px 0 4px;padding:10px;border:1px solid rgba(216,179,93,.22);border-radius:14px;background:rgba(216,179,93,.055);}
+.match-mvp-line{display:grid;grid-template-columns:auto auto 1fr;gap:8px;align-items:center;font-size:12px;color:var(--muted);font-weight:800;}
+.match-mvp-line span{font-family:'Bebas Neue',sans-serif;color:var(--gold);letter-spacing:2px;font-size:15px;}
+.match-mvp-line b{color:#fff;font-size:13px;}
+.match-mvp-line em{font-style:normal;color:var(--ice);text-align:right;}
+.carry-meter-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;}
+.carry-team{padding:8px;border-radius:12px;background:rgba(255,255,255,.04);}
+.carry-team-name{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:900;margin-bottom:5px;}
+.carry-bars{display:flex;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--ice);}
+.carry-badge{font-size:12px;color:#fff;font-weight:800;margin-top:6px;}
+.latest-week-mvp{margin-top:5px;color:var(--gold);font-size:12px;font-weight:900;}
+@media(max-width:760px){.analytics-grid,.analytics-grid-four,.carry-meter-grid{grid-template-columns:1fr}.team-bb-row{grid-template-columns:auto auto 1fr auto}.team-bb-metrics:nth-last-child(-n+2){display:none}.match-mvp-line{grid-template-columns:1fr}.match-mvp-line em{text-align:left}.power-row{grid-template-columns:auto auto 1fr auto}.power-row .streak-badge{display:none}}
