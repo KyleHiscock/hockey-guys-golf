@@ -68,7 +68,7 @@ let RESULTS = [];
 var SKINS_DATA = [];
 var CTP_DATA = [];
 const STORAGE_KEY = 'hggl_2026_state_v2';
-const HGL_FRONTEND_VERSION = 'v4.9.6-net-handicap-correction';
+const HGL_FRONTEND_VERSION = 'v4.9.7-dashboard-full-lists';
 try { console.log('Hockey Guys Golf League frontend ' + HGL_FRONTEND_VERSION); } catch(e) {}
 let currentUser = null;
 let scorecardScores = {};  // "pid_hole" -> gross score string
@@ -934,14 +934,16 @@ function renderLatestWeekResultsList(results) {
     const playersHtml = playerTotals.length ? '<div class="latest-week-players">' + playerTotals.map(function(p){
       return '<span><b>' + escapeLeagueHtml(p.name) + '</b> ' + p.gross + '/' + p.net + '</span>';
     }).join('') + '</div>' : '';
+    const team1Html = '<span class="latest-week-team ' + (t1w ? 'winner' : '') + '">' +
+      logoImg(r.team1 || '', 'latest-week-logo', 'latest-week-logo-placeholder') +
+      '<span>' + escapeLeagueHtml(r.team1 || '') + '</span></span>';
+    const team2Html = '<span class="latest-week-team ' + (t2w ? 'winner' : '') + '">' +
+      logoImg(r.team2 || '', 'latest-week-logo', 'latest-week-logo-placeholder') +
+      '<span>' + escapeLeagueHtml(r.team2 || '') + '</span></span>';
     return '<div class="latest-week-result-row">' +
       '<div class="latest-week-score">' + escapeLeagueHtml(displayInfo.matchResult || 'Final') + '</div>' +
       '<div class="latest-week-body">' +
-        '<div class="latest-week-matchup">' +
-          '<span class="' + (t1w ? 'winner' : '') + '">' + escapeLeagueHtml(r.team1 || '') + '</span>' +
-          '<span class="latest-week-vs">vs</span>' +
-          '<span class="' + (t2w ? 'winner' : '') + '">' + escapeLeagueHtml(r.team2 || '') + '</span>' +
-        '</div>' +
+        '<div class="latest-week-matchup">' + team1Html + '<span class="latest-week-vs">vs</span>' + team2Html + '</div>' +
         (winnerName ? '<div class="latest-week-winner">Winner: ' + escapeLeagueHtml(winnerName) + '</div>' : '<div class="latest-week-winner">Tie / pending</div>') +
         playersHtml +
       '</div>' +

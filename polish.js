@@ -1,4 +1,4 @@
-// V4.9 polish layer — commissioner note + league leaders (top 3) + bar attendance + handicap tracker
+// V4.9.7 polish layer — commissioner note + league leaders + full league attendance + full handicap tracker
 // buildDashboard, buildResults, buildSchedule handled by public.js — do NOT add them here
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -237,20 +237,22 @@ function buildAttendanceCardHTML() {
     return '<div class="dash-sub" style="margin-top:8px;">Bar attendance will appear after Week 1 is entered. 🍺</div>';
   }
 
-  const sorted = [...all].sort((a,b) =>
-    b.weeksAtBar - a.weeksAtBar || b.streak - a.streak || a.name.localeCompare(b.name));
+  const sorted = [...all].sort((a,b) => {
+    const pctA = a.weeksTracked > 0 ? (a.weeksAtBar / a.weeksTracked) : 0;
+    const pctB = b.weeksTracked > 0 ? (b.weeksAtBar / b.weeksTracked) : 0;
+    return pctB - pctA || b.weeksAtBar - a.weeksAtBar || b.streak - a.streak || a.name.localeCompare(b.name);
+  });
 
-  const top3    = sorted.slice(0, 3);
-  const bottom3 = sorted.slice(-3).reverse();
+  const totalWeeks = Math.max.apply(null, sorted.map(p => p.weeksTracked || 0));
 
-  function attendRow(p, medal, isBottom) {
+  function attendRow(p, index) {
     const streakBadge  = p.streak >= 2 ? '<span class="att-streak">🔥' + p.streak + '</span>' : '';
     const perfectBadge = p.perfectSoFar ? '<span class="att-perfect">🏅</span>' : '';
     const pct      = p.weeksTracked > 0 ? Math.round((p.weeksAtBar / p.weeksTracked) * 100) : 0;
-    const barColor = isBottom ? 'var(--red)' : 'var(--green)';
+    const barColor = pct >= 75 ? 'var(--green)' : pct >= 50 ? 'var(--gold)' : 'var(--red)';
     const barWidth = Math.max(pct, 4);
     return '<div class="att-row">' +
-      '<span class="att-medal">' + medal + '</span>' +
+      '<span class="att-medal">' + (index + 1) + '</span>' +
       '<div class="att-info">' +
         '<span class="att-name">' + escapeLeagueHtml(p.name) + perfectBadge + streakBadge + '</span>' +
         '<div class="att-bar-wrap"><div class="att-bar" style="width:' + barWidth + '%;background:' + barColor + '"></div></div>' +
@@ -259,17 +261,11 @@ function buildAttendanceCardHTML() {
     '</div>';
   }
 
-  const topRows    = top3.map((p, i) => attendRow(p, LEADER_MEDALS[i], false)).join('');
-  const bottomMeds = ['😬','😅','🍺'];
-  const bottomRows = [...bottom3].reverse().map((p, i) => attendRow(p, bottomMeds[i] || '😬', true)).join('');
-
-  return '<div class="att-section">' +
-      '<div class="att-section-label">🍺 Most Loyal</div>' + topRows +
-    '</div>' +
-    '<div class="att-divider"></div>' +
-    '<div class="att-section">' +
-      '<div class="att-section-label">👻 Bar Ghosts</div>' + bottomRows +
-    '</div>';
+  const rows = sorted.map(attendRow).join('');
+  return '<div class="att-section att-full-section">' +
+    '<div class="att-section-label">🍺 Full League Attendance' + (totalWeeks ? ' · ' + totalWeeks + ' Week' + (totalWeeks === 1 ? '' : 's') : '') + '</div>' +
+    rows +
+  '</div>';
 }
 
 // ── Handicap Tracker ──────────────────────────────────────────────────────────
@@ -288,7 +284,7 @@ function computeHandicapStats() {
 
   const stats = [];
   Object.entries(byPlayer).forEach(([name, entries]) => {
-    if (entries.length < 2) return;
+    if (!entries.length) return;
     entries.sort((a,b) => a.week - b.week);
 
     // Dedupe: multiple entries same week → keep last
@@ -299,11 +295,12 @@ function computeHandicapStats() {
       else { deduped.push({ ...e }); }
     });
 
-    if (deduped.length < 2) return;
-    const first   = deduped[0].index;
-    const current = deduped[deduped.length - 1].index;
-    const change  = parseFloat((current - first).toFixed(1));
-    stats.push({ name, first, current, change, history: deduped });
+    if (!deduped.length) return;
+    const first    = deduped[0].index;
+    const current  = deduped[deduped.length - 1].index;
+    const hasTrend = deduped.length >= 2;
+    const change   = hasTrend ? parseFloat((current - first).toFixed(1)) : null;
+    stats.push({ name, first, current, change, hasTrend, history: deduped });
   });
 
   return stats;
@@ -312,40 +309,38 @@ function computeHandicapStats() {
 function buildHandicapCardHTML() {
   const all = computeHandicapStats();
   if (!all.length) {
-    return '<div class="dash-sub" style="margin-top:8px;">Handicap trends appear after players have at least 2 weeks of scores.</div>';
+    return '<div class="dash-sub" style="margin-top:8px;">Handicap tracker will appear after GHIN indexes are saved.</div>';
   }
 
-  // Most improved = biggest drop (negative change)
-  const improved = [...all].sort((a,b) => a.change - b.change).slice(0, 3);
-  // Most worsened = biggest rise (positive change)
-  const worsened = [...all].sort((a,b) => b.change - a.change).slice(0, 3);
+  const sorted = [...all].sort((a,b) => {
+    if (a.hasTrend && b.hasTrend) return a.change - b.change || a.current - b.current || a.name.localeCompare(b.name);
+    if (a.hasTrend !== b.hasTrend) return a.hasTrend ? -1 : 1;
+    return a.current - b.current || a.name.localeCompare(b.name);
+  });
 
-  function hdcpRow(p, medal) {
-    const sign       = p.change > 0 ? '+' : '';
-    const arrow      = p.change < 0 ? '↓' : p.change > 0 ? '↑' : '→';
-    const arrowColor = p.change < 0 ? 'var(--green)' : p.change > 0 ? 'var(--red)' : 'var(--muted)';
-    const changeStr  = sign + p.change.toFixed(1);
+  function hdcpRow(p, index) {
+    let changeHtml = '<span class="hcp-change" style="color:var(--muted)">New</span>';
+    if (p.hasTrend) {
+      const sign       = p.change > 0 ? '+' : '';
+      const arrow      = p.change < 0 ? '↓' : p.change > 0 ? '↑' : '→';
+      const arrowColor = p.change < 0 ? 'var(--green)' : p.change > 0 ? 'var(--red)' : 'var(--muted)';
+      const changeStr  = sign + p.change.toFixed(1);
+      changeHtml = '<span class="hcp-change" style="color:' + arrowColor + '">' + arrow + ' ' + changeStr + '</span>';
+    }
     return '<div class="hcp-row">' +
-      '<span class="att-medal">' + medal + '</span>' +
+      '<span class="att-medal">' + (index + 1) + '</span>' +
       '<div class="att-info">' +
         '<span class="att-name">' + escapeLeagueHtml(p.name) + '</span>' +
         '<span class="hcp-detail">' + p.first.toFixed(1) + ' → <strong style="color:#fff">' + p.current.toFixed(1) + '</strong></span>' +
       '</div>' +
-      '<span class="hcp-change" style="color:' + arrowColor + '">' + arrow + ' ' + changeStr + '</span>' +
+      changeHtml +
     '</div>';
   }
 
-  const worseMeds   = ['😬','😅','⛳'];
-  const improveRows = improved.map((p, i) => hdcpRow(p, LEADER_MEDALS[i])).join('');
-  const worsenRows  = worsened.map((p, i) => hdcpRow(p, worseMeds[i])).join('');
-
-  return '<div class="att-section">' +
-      '<div class="att-section-label">📉 Most Improved</div>' + improveRows +
-    '</div>' +
-    '<div class="att-divider"></div>' +
-    '<div class="att-section">' +
-      '<div class="att-section-label">📈 Going the Wrong Way</div>' + worsenRows +
-    '</div>';
+  return '<div class="att-section hcp-full-section">' +
+    '<div class="att-section-label">📊 Full League Handicap Tracker</div>' +
+    sorted.map(hdcpRow).join('') +
+  '</div>';
 }
 
 // ── Admin: Attendance Editor ──────────────────────────────────────────────────

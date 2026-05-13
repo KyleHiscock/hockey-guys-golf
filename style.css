@@ -1047,6 +1047,32 @@ body{font-family:'Barlow',sans-serif;background:var(--dark);color:var(--text);mi
   line-height:1.18;
 }
 .latest-week-matchup .winner{color:var(--ice,#9fc9dc);}
+.latest-week-team{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  min-width:0;
+}
+.latest-week-logo,
+.latest-week-logo-placeholder{
+  width:20px;
+  height:20px;
+  border-radius:50%;
+  flex:0 0 20px;
+  object-fit:cover;
+}
+.latest-week-logo-placeholder{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  background:rgba(159,201,220,.14);
+  border:1px solid rgba(159,201,220,.35);
+  color:var(--ice,#9fc9dc);
+  font-family:'Inter Tight','Barlow',sans-serif;
+  font-size:8px;
+  font-weight:900;
+  letter-spacing:.2px;
+}
 .latest-week-vs{color:var(--muted,#9aaabc);font-size:10px;text-transform:uppercase;letter-spacing:.8px;margin:0 2px;}
 .latest-week-winner{
   margin-top:2px;
@@ -1072,3 +1098,13 @@ body{font-family:'Barlow',sans-serif;background:var(--dark);color:var(--text);mi
   .latest-week-result-row{grid-template-columns:48px minmax(0,1fr);}
   .latest-week-players{grid-template-columns:1fr;}
 }
+
+
+/* V4.9.7 — full-league dashboard list polish */
+.att-full-section .att-medal,
+.hcp-full-section .att-medal{
+  font-family:'Bebas Neue','Barlow Condensed',sans-serif;
+  font-size:15px;
+  color:var(--gold,#d8b35d);
+}
+.hcp-full-section .att-medal{color:var(--ice,#9fc9dc);}

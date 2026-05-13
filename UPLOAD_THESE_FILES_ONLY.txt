@@ -1,4 +1,4 @@
-Upload these files to the GitHub Pages repository root and replace the current versions:
+Upload only these files to the GitHub Pages repository root:
 
 admin.html
 index.html
@@ -9,5 +9,5 @@ style.css
 theme-polished.css
 robots.txt
 
-Do not upload duplicate renamed files such as admin-v4.9.6.html or public-v4.9.6.js.
-No Apps Script redeploy is required for v4.9.6.
+Do not upload duplicate named copies such as admin-v4.9.7.html or public-fixed.js.
+No Apps Script redeploy is required for this update.
