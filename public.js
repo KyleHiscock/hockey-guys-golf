@@ -738,8 +738,7 @@ function getDataStatusLabel() {
 }
 
 function renderDataStatusBar() {
-  return '<div class="data-status-bar"><div><span class="data-status-kicker">Data Status</span><b>' + escapeLeagueHtml(getDataStatusLabel()) + '</b></div>' +
-    '<button class="data-refresh-btn" onclick="manualRefreshLeagueData(this)">🔄 Refresh Data</button></div>';
+  return '<div class="data-status-mini"><span>Last updated: ' + escapeLeagueHtml(getDataStatusLabel()) + '</span></div>';
 }
 
 async function manualRefreshLeagueData(btn) {
@@ -1134,13 +1133,17 @@ function renderTeamBestBallCard(limit) {
       var prev = t.scores[t.scores.length - 2].net;
       trend = last < prev ? '🔥' : last > prev ? '🧊' : '➖';
     }
-    return '<div class="team-bb-row team-bb-row-wide"><div class="team-bb-rank">' + (i+1) + '</div>' +
+    return '<div class="team-bb-row team-bb-row-wide">' +
+      '<div class="team-bb-rank">' + (i+1) + '</div>' +
       logoImg(t.name, 'team-bb-logo', 'team-bb-placeholder') +
       '<div class="team-bb-name"><b>' + escapeLeagueHtml(t.name) + '</b><span>' + t.rounds + ' round' + (t.rounds === 1 ? '' : 's') + (trend ? ' · ' + trend : '') + '</span></div>' +
-      '<div class="team-bb-metrics"><b>' + (t.avgNet !== null ? t.avgNet.toFixed(1) : '—') + '</b><span>Net Avg</span></div>' +
-      '<div class="team-bb-metrics"><b>' + (t.avgGross !== null ? t.avgGross.toFixed(1) : '—') + '</b><span>Gross Avg</span></div>' +
-      '<div class="team-bb-metrics"><b>' + (t.bestNet !== null ? t.bestNet : '—') + '</b><span>Best Net</span></div>' +
-      '<div class="team-bb-metrics"><b>' + (t.worstNet !== null ? t.worstNet : '—') + '</b><span>Worst Net</span></div></div>';
+      '<div class="team-bb-metric-grid">' +
+        '<div class="team-bb-metrics"><b>' + (t.avgNet !== null ? t.avgNet.toFixed(1) : '—') + '</b><span>Net Avg</span></div>' +
+        '<div class="team-bb-metrics"><b>' + (t.avgGross !== null ? t.avgGross.toFixed(1) : '—') + '</b><span>Gross Avg</span></div>' +
+        '<div class="team-bb-metrics"><b>' + (t.bestNet !== null ? t.bestNet : '—') + '</b><span>Best Net</span></div>' +
+        '<div class="team-bb-metrics"><b>' + (t.worstNet !== null ? t.worstNet : '—') + '</b><span>Worst Net</span></div>' +
+      '</div>' +
+    '</div>';
   }).join('') + '<div class="analytics-note" style="margin-top:10px;">Team BB is split: Gross BB uses raw best-ball scores; Net BB uses each player’s individual 9-hole handicap strokes, not relative match-play strokes.</div></div>';
 }
 
