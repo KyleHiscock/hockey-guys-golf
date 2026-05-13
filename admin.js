@@ -100,7 +100,7 @@ let RESULTS = [];
 var SKINS_DATA = [];
 var CTP_DATA = [];
 const STORAGE_KEY = 'hggl_2026_state_v2';
-const HGL_FRONTEND_VERSION = 'v4.9.15-stability-audit';
+const HGL_FRONTEND_VERSION = 'v4.9.17-commissioner-control';
 try { console.log('Hockey Guys Golf League frontend ' + HGL_FRONTEND_VERSION); } catch(e) {}
 let currentUser = null;
 let scorecardScores = {};
@@ -1207,86 +1207,78 @@ function renderStatsAnalyticsSections(playerStats) {
     renderScoringRatesSection(playerStats);
 }
 
-// ── DASHBOARD ──
+// ── ADMIN CONTROL CENTER DASHBOARD ──
+function getWeekLockSummary() {
+  var complete = 0, locked = 0, openComplete = 0;
+  (SCHEDULE_WEEKS || []).forEach(function(w){
+    var info = getWeekCompletionInfo(w);
+    var isLocked = String(w.status || '').toLowerCase() === 'locked';
+    if (info.isComplete) complete++;
+    if (isLocked) locked++;
+    if (info.isComplete && !isLocked) openComplete++;
+  });
+  return { complete: complete, locked: locked, openComplete: openComplete, total: (SCHEDULE_WEEKS || []).length };
+}
+
+function getAuditCounts() {
+  var items = (typeof getScoreAuditItems === 'function') ? getScoreAuditItems() : [];
+  var counts = { bad:0, warn:0, info:0 };
+  items.forEach(function(i){ counts[i.level] = (counts[i.level] || 0) + 1; });
+  return counts;
+}
+
+function openCommissionerControl(tabId) {
+  var commBtn = document.querySelector('.comm-btn') || Array.from(document.querySelectorAll('.nav-btn')).find(function(b){ return /scores/i.test(b.textContent || ''); });
+  if (commBtn && typeof show === 'function') show('commissioner', commBtn);
+  if (!currentUser) return;
+  var tabBtn = Array.from(document.querySelectorAll('.comm-tab')).find(function(b){ return String(b.getAttribute('onclick') || '').indexOf(tabId) >= 0; });
+  if (tabBtn && typeof showCommTab === 'function') showCommTab(tabId, tabBtn);
+  if (tabId === 'audit-tab' && typeof buildScoreAuditPanel === 'function') buildScoreAuditPanel();
+  if (tabId === 'schedule-tab' && typeof buildWeekCompletionManager === 'function') buildWeekCompletionManager();
+  if (tabId === 'extras-tab' && typeof buildExtrasManager === 'function') buildExtrasManager();
+  if (tabId === 'attendance-tab' && typeof buildAttendanceEditor === 'function') buildAttendanceEditor();
+  if (tabId === 'manage-tab' && typeof buildResultManager === 'function') buildResultManager();
+}
+
 function buildDashboard() {
-  const container = document.getElementById('dashboard-container');
+  var container = document.getElementById('dashboard-container');
   if(!container) return;
-  const sorted = getSortedStandings();
-  const leader = sorted[0];
-  const nextWeek = getNextIncompleteWeek();
-  const latestInfo = getLatestResultsInfo();
-  const firstLatest = latestInfo.results[0] || null;
-  const miniRows = sorted.slice(0,4).map((t,i)=>`<div class="mini-standings-row">
-    <div class="mini-rank">${i+1}</div>
-    <div class="mini-team">${logoImg(t.name,'mini-logo','m-placeholder')}<div class="mini-team-name">${t.name}</div></div>
-    <div class="mini-record">${t.w}-${t.l}<span class="mini-hw">${t.holesWon || 0} HW</span></div>
-  </div>`).join('');
+  var latestInfo = getLatestResultsInfo();
+  var nextWeek = getNextIncompleteWeek();
+  var weekSummary = getWeekLockSummary();
+  var auditCounts = getAuditCounts();
+  var latestText = latestInfo.week ? ('Week ' + latestInfo.week + ' posted · ' + latestInfo.results.length + ' result' + (latestInfo.results.length === 1 ? '' : 's')) : 'No results posted yet';
+  var nextText = nextWeek ? ('Week ' + nextWeek.week + ' · ' + (getWeekCompletionInfo(nextWeek).completed || 0) + '/' + (getWeekCompletionInfo(nextWeek).total || 0) + ' posted') : 'Regular season complete';
+  var auditText = auditCounts.bad ? (auditCounts.bad + ' critical') : (auditCounts.warn ? (auditCounts.warn + ' warning' + (auditCounts.warn === 1 ? '' : 's')) : 'Clean / notes only');
+  var lockedText = weekSummary.locked + ' locked · ' + weekSummary.openComplete + ' ready';
+  var signedInText = currentUser ? ('Signed in as ' + currentUser) : 'Sign in under Scores to use commissioner controls';
 
-  const nextHtml = nextWeek ? nextWeek.matchups
-    .filter(function(m){ return !isScheduledMatchCompleted(nextWeek.week, m); })
-    .map(m=>`<div class="matchup-card">
-      <span class="m-time">${m.time}</span>
-      <div class="m-team right"><span class="m-name">${m.home}</span>${logoImg(m.home,'m-logo','m-placeholder')}</div>
-      <div class="vs-badge">VS</div>
-      <div class="m-team">${logoImg(m.away,'m-logo','m-placeholder')}<span class="m-name">${m.away}</span></div>
-    </div>`).join('') : '<div class="dash-empty">Regular season schedule complete. See Results for match outcomes.</div>';
-
-  const noteText = (localStorage.getItem("hggl2026_commissioner_note") || "Week 1 starts Tuesday, May 5th. Please arrive early, check in with your group, and make sure GHIN scores are posted after the round.").trim();
-  const safeNote = escapeLeagueHtml(noteText).replace(/\n/g, '<br>');
-  const latestLabel = latestInfo.week ? 'Latest Results · Week ' + latestInfo.week : 'Latest Results';
-  const latestWeekResults = latestInfo.results.length ? renderLatestWeekResultsList(latestInfo.results) : '<div class="dash-empty">Check back after Week 1</div>';
-
-  container.innerHTML = `
-    ${renderDataStatusBar()}
-    <div class="dashboard-panel update-card">
-      <div class="update-icon">📣</div>
-      <div>
-        <div class="update-title">Commissioner Note</div>
-        <div class="update-copy">${safeNote}</div>
-      </div>
-    </div>
-    <div class="dashboard-grid dashboard-grid-two">
-      <div class="dash-card league-leaders-card">
-        <div class="dash-label">League Leaders</div>
-        ${(function() {
-          if (typeof computePlayerStats !== 'function') return '<div class="dash-sub" style="margin-top:8px;">Leaders will appear after Week 1 scores are entered.</div>';
-          const players = computePlayerStats();
-          const list = Object.values(players).filter(function(p){ return p.roundsPlayed > 0; });
-          if (!list.length) return '<div class="dash-sub" style="margin-top:8px;">Leaders will appear after Week 1 scores are entered.</div>';
-          const minGross = Math.min.apply(null, list.map(function(p){ return p.totalGross / p.roundsPlayed; }));
-          const lowGross = list.filter(function(p){ return Math.abs((p.totalGross/p.roundsPlayed)-minGross)<0.001; }).map(function(p){return p.name;}).join(' & ');
-          const withNet = list.filter(function(p){ return (p.totalNet||0)>0; });
-          var lowNet = '—'; var minNet = null;
-          if (withNet.length) {
-            minNet = Math.min.apply(null, withNet.map(function(p){ return p.totalNet/p.roundsPlayed; }));
-            lowNet = withNet.filter(function(p){ return Math.abs((p.totalNet/p.roundsPlayed)-minNet)<0.001; }).map(function(p){return p.name;}).join(' & ');
-          }
-          const maxBirdies = Math.max.apply(null, list.map(function(p){ return p.netBirdies||0; }));
-          const mostBirdies = maxBirdies > 0 ? list.filter(function(p){ return (p.netBirdies||0)===maxBirdies; }).map(function(p){return p.name;}).join(' & ') : '—';
-          return '<div class="leaders-strip">' +
-            '<div class="leader-row"><span class="leader-cat">Low Gross</span><span class="leader-val">' + (minGross!==null?minGross.toFixed(1):'—') + '</span><span class="leader-name-sm">' + lowGross + '</span></div>' +
-            '<div class="leader-row"><span class="leader-cat">Low Net</span><span class="leader-val">' + (minNet!==null?minNet.toFixed(1):'—') + '</span><span class="leader-name-sm">' + lowNet + '</span></div>' +
-            '<div class="leader-row"><span class="leader-cat">Net Birdies</span><span class="leader-val">' + (maxBirdies>0?maxBirdies:'—') + '</span><span class="leader-name-sm">' + mostBirdies + '</span></div>' +
-          '</div>';
-        })()}
-      </div>
-      <div class="dash-card ice latest-results-card" id="latest-result-card">
-        <div class="dash-label" id="lr-label">${latestLabel}</div>
-        <div id="latest-week-results" class="latest-week-results-wrap">${latestWeekResults}</div>
-      </div>
-    </div>
-    <div class="dashboard-grid dashboard-grid-two" style="margin-bottom:14px;">
-      <div class="dash-card power-rankings-card"><div class="dash-label">⚡ Power Rankings</div>${renderPowerRankingsCard()}</div>
-      <div class="dash-card team-bestball-card"><div class="dash-label">🏌️ Team Best-Ball Avg</div>${renderTeamBestBallCard(4)}</div>
-    </div>
-    <div class="dashboard-panel" style="margin-bottom:14px;"><div class="panel-title">Last Week&#39;s Extras</div><div id="extras-dashboard-content">${(typeof buildExtrasPanel === 'function') ? buildExtrasPanel() : ''}</div></div>
-    <div class="dashboard-two">
-      <div class="dashboard-panel"><div class="panel-title">Next Up${nextWeek ? ' · Week ' + nextWeek.week : ''}</div>${nextHtml || '<div class="dash-empty">This week is complete. See Results for match outcomes.</div>'}</div>
-      <div class="dashboard-panel"><div class="panel-title">Top Standings</div>${miniRows || '<div class="dash-empty">No standings yet.</div>'}</div>
-    </div>
-    <div class="dashboard-panel playoff-dashboard"><div class="panel-title">If Playoffs Started Today</div><div class="dash-empty" style="margin-bottom:10px">Opening-round matchups based on current standings. If teams have the same record, total holes won is the standings tiebreaker. Teams reseed after each round.</div><div id="playoff-picture-container"></div></div>`;
-  if (typeof buildPlayoffPicture === "function") buildPlayoffPicture();
-  clearInterval(_lrTimer);
+  container.innerHTML = '<div class="admin-control-center">' +
+    '<div class="admin-status-line">' + escapeLeagueHtml(getDataStatusLabel()) + '</div>' +
+    '<div class="admin-control-hero">' +
+      '<div><div class="admin-control-kicker">Commissioner Control Center</div>' +
+      '<h2>Manage scores, audits, locks, and league updates.</h2>' +
+      '<p>' + escapeLeagueHtml(signedInText) + '</p></div>' +
+      '<button class="admin-control-primary" onclick="openCommissionerControl(\'scorecard-tab\')">📋 Enter Scores</button>' +
+    '</div>' +
+    '<div class="admin-quick-grid">' +
+      '<button onclick="openCommissionerControl(\'scorecard-tab\')"><b>📋 Scorecard</b><span>Enter weekly match results</span></button>' +
+      '<button onclick="openCommissionerControl(\'audit-tab\')"><b>🧪 Run Audit</b><span>Check score data before locking</span></button>' +
+      '<button onclick="openCommissionerControl(\'schedule-tab\')"><b>🔒 Lock Weeks</b><span>Finalize completed weeks</span></button>' +
+      '<button onclick="openCommissionerControl(\'manage-tab\')"><b>🗑 Manage Results</b><span>Edit or delete saved results</span></button>' +
+      '<button onclick="openCommissionerControl(\'note-tab\')"><b>📣 Commissioner Note</b><span>Update the public dashboard note</span></button>' +
+      '<button onclick="openCommissionerControl(\'extras-tab\')"><b>🏆 Skins & CTP</b><span>Track weekly extras</span></button>' +
+      '<button onclick="openCommissionerControl(\'attendance-tab\')"><b>🍺 Bar Attendance</b><span>Update post-round attendance</span></button>' +
+      '<button onclick="manualRefreshLeagueData(this)"><b>🔄 Refresh Data</b><span>Pull fresh Google Sheets data</span></button>' +
+    '</div>' +
+    '<div class="admin-status-grid">' +
+      '<div class="admin-status-card"><span>Latest Results</span><b>' + escapeLeagueHtml(latestText) + '</b></div>' +
+      '<div class="admin-status-card"><span>Next Incomplete Week</span><b>' + escapeLeagueHtml(nextText) + '</b></div>' +
+      '<div class="admin-status-card"><span>Audit Status</span><b>' + escapeLeagueHtml(auditText) + '</b></div>' +
+      '<div class="admin-status-card"><span>Week Locks</span><b>' + escapeLeagueHtml(lockedText) + '</b></div>' +
+    '</div>' +
+    '<div class="admin-control-note">Admin home is intentionally lean. Public analytics, power rankings, playoff picture, and leaderboards stay on the public side; this page focuses on data entry and quality control.</div>' +
+  '</div>';
 }
 
 var _lrTimer = null;
@@ -3197,17 +3189,19 @@ function auditResultCompleteness(r) {
   var scores = r.scoreSnapshot || {};
   var missing = [];
   snap.slice(0,4).forEach(function(p, pi){
-    holes.forEach(function(h){
-      var g = getScoreForPlayerHole(scores, p, pi, h.hole);
-      if (g === null || isNaN(g)) missing.push((p.name || ('Player ' + (pi+1))) + ' H' + h.hole);
+    var rowScores = holes.map(function(h){ return getScoreForPlayerHole(scores, p, pi, h.hole); });
+    var hasAnyScore = rowScores.some(function(g){ return g !== null && !isNaN(g); });
+    // One-player teams happen when a partner is absent and no sub is used.
+    // A completely blank row is intentional in that case and should not be flagged.
+    if (!hasAnyScore) return;
+    rowScores.forEach(function(g, hi){
+      if (g === null || isNaN(g)) missing.push((p.name || ('Player ' + (pi+1))) + ' H' + holes[hi].hole);
     });
   });
   return missing;
 }
 
-function buildScoreAuditPanel() {
-  var el = document.getElementById('score-audit-panel');
-  if (!el) return;
+function getScoreAuditItems() {
   var items = [];
   var keyMap = {};
   (RESULTS || []).forEach(function(r){
@@ -3221,18 +3215,18 @@ function buildScoreAuditPanel() {
   (RESULTS || []).forEach(function(r){
     var label = 'Week ' + r.week + ' · ' + r.team1 + ' vs ' + r.team2;
     var missing = auditResultCompleteness(r);
-    if (missing.length) items.push({ level:'warn', title:'Incomplete scorecard', detail:label + ' has ' + missing.length + ' missing player-hole scores.' });
+    if (missing.length) items.push({ level:'warn', title:'Incomplete scorecard', detail:label + ' has ' + missing.length + ' missing player-hole scores. Completely blank absent-player rows are ignored.' });
     var display = getDisplayedResultInfo(r);
     if (display) {
       var storedWinner = normalizeTeamName(r.winner || '');
       var calcWinner = normalizeTeamName(display.winner || '');
-      var storedResult = String(r.matchResult || '').trim().toUpperCase();
-      var calcResult = String(display.matchResult || '').trim().toUpperCase();
+      // The saved match result text from the scoring app is treated as official.
+      // We only flag a true winner mismatch, because full 9-hole scorecards can calculate to
+      // a different final margin after a match was already closed as 3&2, 4&2, etc.
       if (storedWinner && calcWinner && storedWinner !== calcWinner) items.push({ level:'bad', title:'Winner mismatch', detail:label + ' saved winner is ' + r.winner + ', calculated winner is ' + display.winner + '.' });
-      if (storedResult && calcResult && storedResult !== calcResult) items.push({ level:'warn', title:'Result text mismatch', detail:label + ' saved result is ' + r.matchResult + ', calculated result is ' + display.matchResult + '.' });
     }
     var snap = getResultSnapshotPlayers(r);
-    snap.forEach(function(p){
+    snap.forEach(function(p, pi){
       var name = normalizePlayerStatName(p.name || '');
       if (name && !isOfficialRosterPlayerName(name)) {
         items.push({ level:'info', title:'Sub / non-roster player', detail:label + ': ' + name + ' is excluded from season-long player leaderboards.' });
@@ -3244,10 +3238,17 @@ function buildScoreAuditPanel() {
     var locked = String(w.status || '').toLowerCase() === 'locked';
     if (info.isComplete && !locked) items.push({ level:'info', title:'Week ready to lock', detail:'Week ' + w.week + ' has all scheduled results entered but is not locked yet.' });
   });
+  return items;
+}
+
+function buildScoreAuditPanel() {
+  var el = document.getElementById('score-audit-panel');
+  if (!el) return;
+  var items = getScoreAuditItems();
   var counts = { bad:0, warn:0, info:0 };
   items.forEach(function(i){ counts[i.level] = (counts[i.level] || 0) + 1; });
   if (!items.length) {
-    el.innerHTML = '<div class="audit-summary good"><b>✅ Audit clean</b><span>No duplicate results, missing scorecards, or result mismatches found.</span></div>';
+    el.innerHTML = '<div class="audit-summary good"><b>✅ Audit clean</b><span>No duplicate results, missing scorecards, winner mismatches, or unlocked completed weeks found.</span></div>';
     return;
   }
   el.innerHTML = '<div class="audit-summary"><b>Audit Summary</b><span>' + counts.bad + ' critical · ' + counts.warn + ' warnings · ' + counts.info + ' notes</span></div>' +
