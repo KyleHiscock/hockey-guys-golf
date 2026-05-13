@@ -9,8 +9,8 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Condensed:wght@400;600;700;900&family=Barlow:wght@400;500;600;700;800&family=Inter+Tight:wght@500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=4.9.14-net-rates">
-<link rel="stylesheet" href="theme-polished.css?v=4.9.14-net-rates">
+<link rel="stylesheet" href="style.css?v=4.9.15-stability-audit">
+<link rel="stylesheet" href="theme-polished.css?v=4.9.15-stability-audit">
 
 </head>
 <body>
@@ -156,6 +156,7 @@
       <div class="comm-tabs">
         <button class="comm-tab active" onclick="showCommTab('scorecard-tab',this)">📋 Scorecard</button>
         <button class="comm-tab" onclick="showCommTab('manage-tab',this)">🗑 Manage</button>
+        <button class="comm-tab" onclick="showCommTab('audit-tab',this);buildScoreAuditPanel()">🧪 Audit</button>
         <button class="comm-tab" onclick="showCommTab('note-tab',this)">📣 Note</button>
         <button class="comm-tab" onclick="showCommTab('schedule-tab',this);buildWeekCompletionManager()">📅 Schedule</button>
         <button class="comm-tab" onclick="showCommTab('extras-tab',this);buildExtrasManager()">🏆 Extras</button>
@@ -335,6 +336,21 @@
         <div id="extras-manager-list" style="margin-top:24px;"></div>
       </div>
 
+
+      <div id="audit-tab" style="display:none">
+        <div class="entry-card">
+          <div class="entry-title">🧪 Score Audit</div>
+          <p style="font-family:'Barlow Condensed',sans-serif;font-size:13px;color:var(--muted);margin-bottom:14px;">
+            Run this after entering weekly scores. It checks duplicate match results, missing player-hole scores, saved-vs-calculated winners/results, non-roster subs, and weeks that are ready to lock.
+          </p>
+          <div class="two-col manage-actions">
+            <button class="submit-btn" onclick="buildScoreAuditPanel()">🔎 Run Audit</button>
+            <button class="submit-btn" onclick="manualRefreshLeagueData(this)">🔄 Refresh Data</button>
+          </div>
+          <div id="score-audit-panel" style="margin-top:14px;"></div>
+        </div>
+      </div>
+
       <div id="manage-tab" style="display:none">
         <div class="entry-card">
           <div class="entry-title">💾 Data Backup</div>
@@ -374,8 +390,8 @@
 
 <div class="footer">Hockey Guys Golf League &nbsp;·&nbsp; 2026 Season &nbsp;·&nbsp; Twin Hills · Spencerport NY</div>
 
-<script src="admin.js?v=4.9.14-net-rates"></script>
-<script src="polish.js?v=4.9.14-net-rates"></script>
+<script src="admin.js?v=4.9.15-stability-audit"></script>
+<script src="polish.js?v=4.9.15-stability-audit"></script>
 
 </body>
 </html>

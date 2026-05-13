@@ -100,7 +100,7 @@ let RESULTS = [];
 var SKINS_DATA = [];
 var CTP_DATA = [];
 const STORAGE_KEY = 'hggl_2026_state_v2';
-const HGL_FRONTEND_VERSION = 'v4.9.14-net-rates';
+const HGL_FRONTEND_VERSION = 'v4.9.15-stability-audit';
 try { console.log('Hockey Guys Golf League frontend ' + HGL_FRONTEND_VERSION); } catch(e) {}
 let currentUser = null;
 let scorecardScores = {};
@@ -322,11 +322,13 @@ function buildScheduleFromSheet(data) {
     if (!week) return;
 
     const rowStatus = String(row.Status || '').trim().toLowerCase();
-    const isRowComplete = rowStatus === 'completed' || rowStatus === 'complete';
+    const isRowLocked = rowStatus === 'locked' || rowStatus === 'lock';
+    const isRowComplete = rowStatus === 'completed' || rowStatus === 'complete' || isRowLocked;
     if (!byWeek[week]) {
       byWeek[week] = { week, date: formatSheetDate(row.Date), side: row.Side || '', status: '', matchups: [] };
     }
-    if (isRowComplete) { byWeek[week].status = 'completed'; }
+    if (isRowLocked) { byWeek[week].status = 'locked'; }
+    else if (isRowComplete && byWeek[week].status !== 'locked') { byWeek[week].status = 'completed'; }
 
     const home = normalizeTeamName(row['Team 1'] || row.Team1 || row.home || '');
     const away = normalizeTeamName(row['Team 2'] || row.Team2 || row.away || '');
@@ -710,6 +712,12 @@ function loadState() {
       recalcRecordsFromResults();
     }
     if(Array.isArray(parsed.results)) RESULTS = parsed.results;
+    if (parsed.savedAt) {
+      try {
+        LEAGUE_DATA_SOURCE = 'Cached Browser Copy';
+        LEAGUE_DATA_LAST_LOADED = new Date(parsed.savedAt).toLocaleString('en-US', { timeZone: 'America/New_York' });
+      } catch(e) { LEAGUE_DATA_LAST_LOADED = String(parsed.savedAt); }
+    }
     if(typeof parsed.commissionerNote === 'string' && parsed.commissionerNote.trim()) localStorage.setItem('hggl2026_commissioner_note', parsed.commissionerNote);
   } catch (err) {
     console.warn('League data could not be loaded.', err);
@@ -728,6 +736,40 @@ function rebuildAll() {
   buildResultManager();
   const statsSection = document.getElementById('stats');
   if(statsSection && statsSection.classList.contains('active')) buildStats();
+}
+
+
+function getDataStatusLabel() {
+  var source = LEAGUE_DATA_SOURCE || 'Local';
+  var stamp = LEAGUE_DATA_LAST_LOADED || 'Not refreshed yet';
+  return source + ' · ' + stamp;
+}
+
+function renderDataStatusBar() {
+  return '<div class="data-status-bar"><div><span class="data-status-kicker">Data Status</span><b>' + escapeLeagueHtml(getDataStatusLabel()) + '</b></div>' +
+    '<button class="data-refresh-btn" onclick="manualRefreshLeagueData(this)">🔄 Refresh Data</button></div>';
+}
+
+async function manualRefreshLeagueData(btn) {
+  var original = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Refreshing...'; }
+  try {
+    var ok = await fetchLeagueDataFromSheets(true);
+    if (!ok) throw new Error('Could not pull fresh Google Sheets data.');
+  } catch (err) {
+    alert('Refresh failed: ' + err.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = original || '🔄 Refresh Data'; }
+  }
+}
+
+function getStatQualifyingHolesMinimum(playerStats) {
+  var maxHoles = 0;
+  Object.values(playerStats || {}).forEach(function(p) {
+    if (p && isOfficialRosterPlayerName(p.name)) maxHoles = Math.max(maxHoles, Number(p.totalHoles || 0));
+  });
+  if (!maxHoles) return 9;
+  return Math.max(9, Math.floor(maxHoles * 0.5));
 }
 
 function exportLeagueData() {
@@ -873,19 +915,26 @@ function computeResultTeamBestBall(result) {
   if (!resultHasHoleScores(result)) return null;
   var ctx = getResultMatchContext(result);
   if (!ctx.snap || ctx.snap.length < 4) return null;
+
+  // Team analytics are intentionally split from match-play scoring:
+  // Gross BB = raw best-ball score by hole.
+  // Net BB = best-ball score using each player's own individual 9-hole handicap strokes.
+  var statStrokes = calcPlayerStatStrokes(ctx.snap, ctx.side);
+  var statStrokeSets = ctx.snap.map(function(p, i) { return getStrokeHoles(statStrokes[i] || 0, ctx.holes); });
   var teams = [
-    { name: result.team1, idxs: [0,1], total: 0, holes: 0 },
-    { name: result.team2, idxs: [2,3], total: 0, holes: 0 }
+    { name: result.team1, idxs: [0,1], grossTotal: 0, netTotal: 0, holes: 0 },
+    { name: result.team2, idxs: [2,3], grossTotal: 0, netTotal: 0, holes: 0 }
   ];
   ctx.holes.forEach(function(h) {
     teams.forEach(function(team) {
-      var nets = team.idxs.map(function(pi) {
+      var entries = team.idxs.map(function(pi) {
         var g = getScoreForPlayerHole(ctx.scores, ctx.snap[pi], pi, h.hole);
         if (g === null || isNaN(g)) return null;
-        return g - holeStrokeCount(ctx.strokeSets[pi], h.hole);
-      }).filter(function(v){ return v !== null; });
-      if (nets.length) {
-        team.total += Math.min.apply(null, nets);
+        return { gross: g, net: g - holeStrokeCount(statStrokeSets[pi], h.hole) };
+      }).filter(Boolean);
+      if (entries.length) {
+        team.grossTotal += Math.min.apply(null, entries.map(function(e){ return e.gross; }));
+        team.netTotal += Math.min.apply(null, entries.map(function(e){ return e.net; }));
         team.holes++;
       }
     });
@@ -895,30 +944,42 @@ function computeResultTeamBestBall(result) {
 
 function computeTeamBestBallAnalytics() {
   var stats = {};
-  DEFAULT_TEAMS.forEach(function(t){ stats[t.name] = { name:t.name, rounds:0, total:0, best:Infinity, worst:-Infinity, scores:[] }; });
+  DEFAULT_TEAMS.forEach(function(t){
+    stats[t.name] = { name:t.name, rounds:0, grossTotal:0, netTotal:0, bestGross:Infinity, worstGross:-Infinity, bestNet:Infinity, worstNet:-Infinity, scores:[] };
+  });
   (RESULTS || []).forEach(function(r){
     var teams = computeResultTeamBestBall(r);
     if (!teams) return;
     teams.forEach(function(team){
       if (!team.name || !team.holes) return;
-      if (!stats[team.name]) stats[team.name] = { name:team.name, rounds:0, total:0, best:Infinity, worst:-Infinity, scores:[] };
+      if (!stats[team.name]) stats[team.name] = { name:team.name, rounds:0, grossTotal:0, netTotal:0, bestGross:Infinity, worstGross:-Infinity, bestNet:Infinity, worstNet:-Infinity, scores:[] };
       stats[team.name].rounds++;
-      stats[team.name].total += team.total;
-      stats[team.name].scores.push({ week: r.week, score: team.total, opponent: normalizeTeamName(team.name) === normalizeTeamName(r.team1) ? r.team2 : r.team1 });
-      if (team.total < stats[team.name].best) stats[team.name].best = team.total;
-      if (team.total > stats[team.name].worst) stats[team.name].worst = team.total;
+      stats[team.name].grossTotal += team.grossTotal;
+      stats[team.name].netTotal += team.netTotal;
+      stats[team.name].scores.push({ week: r.week, gross: team.grossTotal, net: team.netTotal, opponent: normalizeTeamName(team.name) === normalizeTeamName(r.team1) ? r.team2 : r.team1 });
+      if (team.grossTotal < stats[team.name].bestGross) stats[team.name].bestGross = team.grossTotal;
+      if (team.grossTotal > stats[team.name].worstGross) stats[team.name].worstGross = team.grossTotal;
+      if (team.netTotal < stats[team.name].bestNet) stats[team.name].bestNet = team.netTotal;
+      if (team.netTotal > stats[team.name].worstNet) stats[team.name].worstNet = team.netTotal;
     });
   });
   return Object.values(stats).map(function(t){
-    t.avg = t.rounds ? (t.total / t.rounds) : null;
-    if (t.best === Infinity) t.best = null;
-    if (t.worst === -Infinity) t.worst = null;
+    t.avgGross = t.rounds ? (t.grossTotal / t.rounds) : null;
+    t.avgNet = t.rounds ? (t.netTotal / t.rounds) : null;
+    // Backward-compatible aliases for older formula/display code.
+    t.avg = t.avgNet;
+    t.best = t.bestNet === Infinity ? null : t.bestNet;
+    t.worst = t.worstNet === -Infinity ? null : t.worstNet;
+    if (t.bestGross === Infinity) t.bestGross = null;
+    if (t.worstGross === -Infinity) t.worstGross = null;
+    if (t.bestNet === Infinity) t.bestNet = null;
+    if (t.worstNet === -Infinity) t.worstNet = null;
     return t;
   }).sort(function(a,b){
-    if (a.avg === null && b.avg === null) return a.name.localeCompare(b.name);
-    if (a.avg === null) return 1;
-    if (b.avg === null) return -1;
-    return a.avg - b.avg || a.name.localeCompare(b.name);
+    if (a.avgNet === null && b.avgNet === null) return a.name.localeCompare(b.name);
+    if (a.avgNet === null) return 1;
+    if (b.avgNet === null) return -1;
+    return a.avgNet - b.avgNet || a.avgGross - b.avgGross || a.name.localeCompare(b.name);
   });
 }
 
@@ -1024,23 +1085,25 @@ function renderTeamBestBallCard(limit) {
   return '<div class="team-bb-list">' + useRows.map(function(t, i){
     var trend = '';
     if (t.scores.length >= 2) {
-      var last = t.scores[t.scores.length - 1].score;
-      var prev = t.scores[t.scores.length - 2].score;
+      var last = t.scores[t.scores.length - 1].net;
+      var prev = t.scores[t.scores.length - 2].net;
       trend = last < prev ? '🔥' : last > prev ? '🧊' : '➖';
     }
-    return '<div class="team-bb-row"><div class="team-bb-rank">' + (i+1) + '</div>' +
+    return '<div class="team-bb-row team-bb-row-wide"><div class="team-bb-rank">' + (i+1) + '</div>' +
       logoImg(t.name, 'team-bb-logo', 'team-bb-placeholder') +
       '<div class="team-bb-name"><b>' + escapeLeagueHtml(t.name) + '</b><span>' + t.rounds + ' round' + (t.rounds === 1 ? '' : 's') + (trend ? ' · ' + trend : '') + '</span></div>' +
-      '<div class="team-bb-metrics"><b>' + t.avg.toFixed(1) + '</b><span>Avg</span></div>' +
-      '<div class="team-bb-metrics"><b>' + t.best + '</b><span>Best</span></div>' +
-      '<div class="team-bb-metrics"><b>' + t.worst + '</b><span>Worst</span></div></div>';
-  }).join('') + '</div>';
+      '<div class="team-bb-metrics"><b>' + (t.avgNet !== null ? t.avgNet.toFixed(1) : '—') + '</b><span>Net Avg</span></div>' +
+      '<div class="team-bb-metrics"><b>' + (t.avgGross !== null ? t.avgGross.toFixed(1) : '—') + '</b><span>Gross Avg</span></div>' +
+      '<div class="team-bb-metrics"><b>' + (t.bestNet !== null ? t.bestNet : '—') + '</b><span>Best Net</span></div>' +
+      '<div class="team-bb-metrics"><b>' + (t.worstNet !== null ? t.worstNet : '—') + '</b><span>Worst Net</span></div></div>';
+  }).join('') + '<div class="analytics-note" style="margin-top:10px;">Team BB is split: Gross BB uses raw best-ball scores; Net BB uses each player’s individual 9-hole handicap strokes, not relative match-play strokes.</div></div>';
 }
 
 function computeScoringRates(playerStats, mode) {
   var useNet = mode === 'net';
+  var minHoles = getStatQualifyingHolesMinimum(playerStats);
   return Object.values(playerStats || {}).filter(function(p){
-    return p.totalHoles > 0 && isOfficialRosterPlayerName(p.name);
+    return p.totalHoles >= minHoles && isOfficialRosterPlayerName(p.name);
   }).map(function(p){
     var birdies = useNet ? (p.netBirdies || 0) : (p.birdies || 0);
     var pars    = useNet ? (p.netPars || 0)    : (p.pars || 0);
@@ -1085,9 +1148,10 @@ function renderScoringRatesSection(playerStats) {
   if (!rows.length) return '';
   var isNet = mode === 'net';
   var prefix = isNet ? 'Net ' : '';
+  var minHoles = getStatQualifyingHolesMinimum(playerStats);
   var note = isNet
-    ? 'Net mode uses each roster player’s own individual 9-hole handicap strokes by hole. It does not use relative match-play strokes.'
-    : 'Gross mode uses raw hole scores versus par. Subs are excluded from these season leaderboards.';
+    ? 'Net mode uses each roster player’s own individual 9-hole handicap strokes by hole. It does not use relative match-play strokes. Minimum to qualify: ' + minHoles + ' holes.'
+    : 'Gross mode uses raw hole scores versus par. Subs are excluded from these season leaderboards. Minimum to qualify: ' + minHoles + ' holes.';
   return '<div class="analytics-section"><div class="analytics-title-row"><div class="analytics-title">Birdie / Par / Bogey / Double Rates <span class="rate-mode-pill">' + (isNet ? 'Net' : 'Gross') + '</span></div>' +
     '<div class="rate-toggle" role="group" aria-label="Scoring rate mode">' +
       '<button class="rate-toggle-btn' + (!isNet ? ' active' : '') + '" onclick="setScoringRateMode(\'gross\',this)">Gross</button>' +
@@ -1125,13 +1189,13 @@ function renderPowerRankingsCard() {
   var rows = computePowerRankings();
   if (!rows.length) return '<div class="dash-empty">Power rankings will populate after results are posted.</div>';
   return '<div class="power-rankings-list">' + rows.map(function(t, i){
-    var bbText = t.bbAvg ? t.bbAvg.toFixed(1) + ' BB Avg' : 'No BB Avg yet';
+    var bbText = t.bbAvg ? t.bbAvg.toFixed(1) + ' Net BB Avg' : 'No BB Avg yet';
     var trend = t.streak ? streakBadge(t.streak) : '';
     return '<div class="power-row"><div class="power-rank">' + (i+1) + '</div>' +
       logoImg(t.name, 'power-logo', 'power-placeholder') +
       '<div class="power-team"><b>' + escapeLeagueHtml(t.name) + '</b><span>' + t.record + ' · ' + t.holesWon + ' HW · ' + bbText + '</span></div>' +
       '<div class="power-score">' + Math.round(t.score) + '</div>' + trend + '</div>';
-  }).join('') + '<div class="power-note">Formula: record, holes won, hole differential, team best-ball average, and recent form.</div></div>';
+  }).join('') + '<div class="power-note">Formula: record, holes won, hole differential, net team best-ball average, and recent form.</div></div>';
 }
 
 function renderStatsAnalyticsSections(playerStats) {
@@ -1169,6 +1233,7 @@ function buildDashboard() {
   const latestWeekResults = latestInfo.results.length ? renderLatestWeekResultsList(latestInfo.results) : '<div class="dash-empty">Check back after Week 1</div>';
 
   container.innerHTML = `
+    ${renderDataStatusBar()}
     <div class="dashboard-panel update-card">
       <div class="update-icon">📣</div>
       <div>
@@ -2177,6 +2242,47 @@ function onScoreInput(el) {
   renderScorecard();
 }
 
+// ── STABILITY / AUDIT HELPERS ───────────────────────────────────────────────
+function isWeekLocked(weekNum) {
+  var w = (SCHEDULE_WEEKS || []).find(function(x){ return Number(x.week) === Number(weekNum); });
+  return !!(w && String(w.status || '').toLowerCase() === 'locked');
+}
+
+function getCurrentPlayerGrossNetSummary(players, holes, side) {
+  var statStrokes = calcPlayerStatStrokes(players, side);
+  var statStrokeSets = players.map(function(p, i){ return getStrokeHoles(statStrokes[i] || 0, holes); });
+  return players.map(function(p, pi){
+    var gross = 0, net = 0, count = 0;
+    holes.forEach(function(h){
+      var key = p.id + '_' + h.hole;
+      var g = scorecardScores[key] ? parseInt(scorecardScores[key], 10) : null;
+      if (g && !isNaN(g)) {
+        gross += g;
+        net += g - holeStrokeCount(statStrokeSets[pi], h.hole);
+        count++;
+      }
+    });
+    return { name: p.isSub ? ((p.absentPlayer || '') + '/sub:' + p.name) : (p.name || '(blank)'), gross:gross, net:net, holes:count };
+  });
+}
+
+function confirmMatchSave(week, team1, team2, winnerName, matchResult, players, holes, side) {
+  var lines = [];
+  lines.push('Save Week ' + week + ' result?');
+  lines.push('');
+  lines.push(team1 + ' vs ' + team2);
+  lines.push('Winner: ' + (winnerName || 'Tie / Pending'));
+  lines.push('Result: ' + (matchResult || '—'));
+  lines.push('');
+  lines.push('Player gross/net:');
+  getCurrentPlayerGrossNetSummary(players, holes, side).forEach(function(p){
+    lines.push('- ' + p.name + ': ' + (p.holes ? (p.gross + '/' + p.net) : 'no score'));
+  });
+  lines.push('');
+  lines.push('Confirm this matches the scoring app before saving.');
+  return confirm(lines.join('\n'));
+}
+
 // ── SAVE MATCH ──
 async function saveMatch() {
   const week = parseInt(document.getElementById('sc-week').value);
@@ -2187,6 +2293,7 @@ async function saveMatch() {
 
   if(!week) { alert('Please enter a week number.'); return; }
   if(!team1 || !team2 || team1 === team2) { alert('Please select two different teams.'); return; }
+  if(isWeekLocked(week)) { alert('Week ' + week + ' is locked. Unlock it from Schedule before editing or saving results.'); return; }
 
   const holes = getHoles();
   const players = getPlayers();
@@ -2203,6 +2310,8 @@ async function saveMatch() {
   }
 
   const winnerName = state.winner === 0 ? team1 : state.winner === 1 ? team2 : null;
+
+  if(!confirmMatchSave(week, team1, team2, winnerName, state.matchResult, players, holes, side)) return;
 
   // Update records
   const t1 = TEAMS.find(t => t.name === team1);
@@ -2379,6 +2488,8 @@ function showCommTab(id, btn) {
   if(extrasTab) extrasTab.style.display = id==='extras-tab' ? 'block' : 'none';
   const attTab = document.getElementById('attendance-tab');
   if(attTab) attTab.style.display = id==='attendance-tab' ? 'block' : 'none';
+  const auditTab = document.getElementById('audit-tab');
+  if(auditTab) auditTab.style.display = id==='audit-tab' ? 'block' : 'none';
 }
 
 function show(id, btn) {
@@ -3039,27 +3150,31 @@ function buildWeekCompletionManager() {
     return;
   }
   list.innerHTML = SCHEDULE_WEEKS.map(function(w) {
-    var isComplete = w.status === 'completed';
+    var isLocked = String(w.status || '').toLowerCase() === 'locked';
     var info = getWeekCompletionInfo(w);
-    var statusLabel = isComplete ? 'Marked as completed' : (info.isComplete ? 'All results entered' : (info.completed + '/' + info.total + ' results entered'));
-    var btnLabel = isComplete ? 'Mark as Upcoming' : 'Mark as Completed';
-    var btnBg = isComplete ? 'rgba(255,255,255,0.08)' : '#1a4a2a';
-    var btnBorder = isComplete ? '#9aaabc' : '#7cc77a';
-    var btnTxt = isComplete ? '#9aaabc' : '#7cc77a';
-    var statusColor = isComplete ? '#d8b35d' : (info.isComplete ? '#7cc77a' : '#9aaabc');
+    var statusLabel = isLocked ? 'Locked - score edits blocked' : (info.isComplete ? 'All results entered - ready to lock' : (info.completed + '/' + info.total + ' results entered'));
+    var btnLabel = isLocked ? 'Unlock Week' : 'Lock Week';
+    var btnDisabled = !isLocked && !info.isComplete;
+    var btnBg = isLocked ? 'rgba(255,255,255,0.08)' : '#1a4a2a';
+    var btnBorder = isLocked ? '#9aaabc' : '#7cc77a';
+    var btnTxt = isLocked ? '#9aaabc' : '#7cc77a';
+    var statusColor = isLocked ? '#d8b35d' : (info.isComplete ? '#7cc77a' : '#9aaabc');
     return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px 14px;margin-bottom:8px;">' +
       '<div style="min-width:0;"><div style="font-weight:800;font-size:13px;color:#f0f4f8;">Week ' + w.week + ' &middot; ' + w.date + ' &middot; ' + w.side + '</div>' +
       '<div style="font-size:11px;color:' + statusColor + ';margin-top:3px;">' + statusLabel + '</div></div>' +
-      '<button onclick="toggleWeekCompletion(' + w.week + ',this,' + (!isComplete) + ')" style="background:' + btnBg + ';border:1px solid ' + btnBorder + ';color:' + btnTxt + ';font-size:11px;font-weight:700;padding:7px 12px;border-radius:999px;cursor:pointer;white-space:nowrap;flex-shrink:0;">' + btnLabel + '</button></div>';
+      '<button ' + (btnDisabled ? 'disabled ' : '') + 'onclick="toggleWeekCompletion(' + w.week + ',this,' + (!isLocked) + ')" style="background:' + btnBg + ';border:1px solid ' + btnBorder + ';color:' + btnTxt + ';font-size:11px;font-weight:700;padding:7px 12px;border-radius:999px;cursor:' + (btnDisabled ? 'not-allowed' : 'pointer') + ';opacity:' + (btnDisabled ? '.45' : '1') + ';white-space:nowrap;flex-shrink:0;">' + btnLabel + '</button></div>';
   }).join('');
 }
 
-async function toggleWeekCompletion(weekNum, btn, markComplete) {
+async function toggleWeekCompletion(weekNum, btn, lockWeek) {
   var origText = btn.textContent;
   btn.textContent = 'Saving...';
   btn.disabled = true;
   try {
-    await postLeagueAction('setWeekStatus', { week: weekNum, status: markComplete ? 'completed' : 'upcoming' });
+    var w = (SCHEDULE_WEEKS || []).find(function(x){ return Number(x.week) === Number(weekNum); });
+    var info = w ? getWeekCompletionInfo(w) : { isComplete:false };
+    var nextStatus = lockWeek ? 'locked' : (info.isComplete ? 'completed' : 'upcoming');
+    await postLeagueAction('setWeekStatus', { week: weekNum, status: nextStatus });
     await fetchLeagueDataFromSheets(true);
     buildWeekCompletionManager();
     buildScheduledMatchSelect();
@@ -3069,6 +3184,73 @@ async function toggleWeekCompletion(weekNum, btn, markComplete) {
     btn.disabled = false;
     alert('Could not update: ' + err.message);
   }
+}
+
+
+function auditResultCompleteness(r) {
+  var snap = getResultSnapshotPlayers(r);
+  var holes = analyticsHoles(r);
+  var scores = r.scoreSnapshot || {};
+  var missing = [];
+  snap.slice(0,4).forEach(function(p, pi){
+    holes.forEach(function(h){
+      var g = getScoreForPlayerHole(scores, p, pi, h.hole);
+      if (g === null || isNaN(g)) missing.push((p.name || ('Player ' + (pi+1))) + ' H' + h.hole);
+    });
+  });
+  return missing;
+}
+
+function buildScoreAuditPanel() {
+  var el = document.getElementById('score-audit-panel');
+  if (!el) return;
+  var items = [];
+  var keyMap = {};
+  (RESULTS || []).forEach(function(r){
+    var key = scheduledMatchKey(r.week, r.team1, r.team2);
+    if (!keyMap[key]) keyMap[key] = [];
+    keyMap[key].push(r);
+  });
+  Object.keys(keyMap).forEach(function(k){
+    if (keyMap[k].length > 1) items.push({ level:'warn', title:'Duplicate result', detail:keyMap[k].length + ' entries for ' + k });
+  });
+  (RESULTS || []).forEach(function(r){
+    var label = 'Week ' + r.week + ' · ' + r.team1 + ' vs ' + r.team2;
+    var missing = auditResultCompleteness(r);
+    if (missing.length) items.push({ level:'warn', title:'Incomplete scorecard', detail:label + ' has ' + missing.length + ' missing player-hole scores.' });
+    var display = getDisplayedResultInfo(r);
+    if (display) {
+      var storedWinner = normalizeTeamName(r.winner || '');
+      var calcWinner = normalizeTeamName(display.winner || '');
+      var storedResult = String(r.matchResult || '').trim().toUpperCase();
+      var calcResult = String(display.matchResult || '').trim().toUpperCase();
+      if (storedWinner && calcWinner && storedWinner !== calcWinner) items.push({ level:'bad', title:'Winner mismatch', detail:label + ' saved winner is ' + r.winner + ', calculated winner is ' + display.winner + '.' });
+      if (storedResult && calcResult && storedResult !== calcResult) items.push({ level:'warn', title:'Result text mismatch', detail:label + ' saved result is ' + r.matchResult + ', calculated result is ' + display.matchResult + '.' });
+    }
+    var snap = getResultSnapshotPlayers(r);
+    snap.forEach(function(p){
+      var name = normalizePlayerStatName(p.name || '');
+      if (name && !isOfficialRosterPlayerName(name)) {
+        items.push({ level:'info', title:'Sub / non-roster player', detail:label + ': ' + name + ' is excluded from season-long player leaderboards.' });
+      }
+    });
+  });
+  (SCHEDULE_WEEKS || []).forEach(function(w){
+    var info = getWeekCompletionInfo(w);
+    var locked = String(w.status || '').toLowerCase() === 'locked';
+    if (info.isComplete && !locked) items.push({ level:'info', title:'Week ready to lock', detail:'Week ' + w.week + ' has all scheduled results entered but is not locked yet.' });
+  });
+  var counts = { bad:0, warn:0, info:0 };
+  items.forEach(function(i){ counts[i.level] = (counts[i.level] || 0) + 1; });
+  if (!items.length) {
+    el.innerHTML = '<div class="audit-summary good"><b>✅ Audit clean</b><span>No duplicate results, missing scorecards, or result mismatches found.</span></div>';
+    return;
+  }
+  el.innerHTML = '<div class="audit-summary"><b>Audit Summary</b><span>' + counts.bad + ' critical · ' + counts.warn + ' warnings · ' + counts.info + ' notes</span></div>' +
+    '<div class="audit-list">' + items.map(function(i){
+      var icon = i.level === 'bad' ? '🚨' : i.level === 'warn' ? '⚠️' : 'ℹ️';
+      return '<div class="audit-item ' + i.level + '"><div class="audit-icon">' + icon + '</div><div><b>' + escapeLeagueHtml(i.title) + '</b><span>' + escapeLeagueHtml(i.detail) + '</span></div></div>';
+    }).join('') + '</div>';
 }
 
 function applySkinsCtpFromSheet(data) {

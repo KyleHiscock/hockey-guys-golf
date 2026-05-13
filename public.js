@@ -97,7 +97,7 @@ let RESULTS = [];
 var SKINS_DATA = [];
 var CTP_DATA = [];
 const STORAGE_KEY = 'hggl_2026_state_v2';
-const HGL_FRONTEND_VERSION = 'v4.9.14-net-rates';
+const HGL_FRONTEND_VERSION = 'v4.9.15-stability-audit';
 try { console.log('Hockey Guys Golf League frontend ' + HGL_FRONTEND_VERSION); } catch(e) {}
 let currentUser = null;
 let scorecardScores = {};  // "pid_hole" -> gross score string
@@ -313,6 +313,9 @@ function buildScheduleFromSheet(data) {
     const week = Number(row.Week || row.week || 0);
     if (!week) return;
 
+    const rowStatus = String(row.Status || '').trim().toLowerCase();
+    const isRowLocked = rowStatus === 'locked' || rowStatus === 'lock';
+    const isRowComplete = rowStatus === 'completed' || rowStatus === 'complete' || isRowLocked;
     if (!byWeek[week]) {
       byWeek[week] = {
         week,
@@ -322,7 +325,9 @@ function buildScheduleFromSheet(data) {
         matchups: []
       };
     }
-    if (String(row.Status || '').toLowerCase() === 'completed') {
+    if (isRowLocked) {
+      byWeek[week].status = 'locked';
+    } else if (isRowComplete && byWeek[week].status !== 'locked') {
       byWeek[week].status = 'completed';
     }
 
@@ -699,6 +704,12 @@ function loadState() {
       recalcRecordsFromResults();
     }
     if(Array.isArray(parsed.results)) RESULTS = parsed.results;
+    if (parsed.savedAt) {
+      try {
+        LEAGUE_DATA_SOURCE = 'Cached Browser Copy';
+        LEAGUE_DATA_LAST_LOADED = new Date(parsed.savedAt).toLocaleString('en-US', { timeZone: 'America/New_York' });
+      } catch(e) { LEAGUE_DATA_LAST_LOADED = String(parsed.savedAt); }
+    }
     if(typeof parsed.commissionerNote === 'string' && parsed.commissionerNote.trim()) localStorage.setItem('hggl2026_commissioner_note', parsed.commissionerNote);
   } catch (err) {
     console.warn('League data could not be loaded.', err);
@@ -717,6 +728,40 @@ function rebuildAll() {
   buildResultManager();
   const statsSection = document.getElementById('stats');
   if(statsSection && statsSection.classList.contains('active')) buildStats();
+}
+
+
+function getDataStatusLabel() {
+  var source = LEAGUE_DATA_SOURCE || 'Local';
+  var stamp = LEAGUE_DATA_LAST_LOADED || 'Not refreshed yet';
+  return source + ' · ' + stamp;
+}
+
+function renderDataStatusBar() {
+  return '<div class="data-status-bar"><div><span class="data-status-kicker">Data Status</span><b>' + escapeLeagueHtml(getDataStatusLabel()) + '</b></div>' +
+    '<button class="data-refresh-btn" onclick="manualRefreshLeagueData(this)">🔄 Refresh Data</button></div>';
+}
+
+async function manualRefreshLeagueData(btn) {
+  var original = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Refreshing...'; }
+  try {
+    var ok = await fetchLeagueDataFromSheets(true);
+    if (!ok) throw new Error('Could not pull fresh Google Sheets data.');
+  } catch (err) {
+    alert('Refresh failed: ' + err.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = original || '🔄 Refresh Data'; }
+  }
+}
+
+function getStatQualifyingHolesMinimum(playerStats) {
+  var maxHoles = 0;
+  Object.values(playerStats || {}).forEach(function(p) {
+    if (p && isOfficialRosterPlayerName(p.name)) maxHoles = Math.max(maxHoles, Number(p.totalHoles || 0));
+  });
+  if (!maxHoles) return 9;
+  return Math.max(9, Math.floor(maxHoles * 0.5));
 }
 
 function exportLeagueData() {
@@ -915,19 +960,26 @@ function computeResultTeamBestBall(result) {
   if (!resultHasHoleScores(result)) return null;
   var ctx = getResultMatchContext(result);
   if (!ctx.snap || ctx.snap.length < 4) return null;
+
+  // Team analytics are intentionally split from match-play scoring:
+  // Gross BB = raw best-ball score by hole.
+  // Net BB = best-ball score using each player's own individual 9-hole handicap strokes.
+  var statStrokes = calcPlayerStatStrokes(ctx.snap, ctx.side);
+  var statStrokeSets = ctx.snap.map(function(p, i) { return getStrokeHoles(statStrokes[i] || 0, ctx.holes); });
   var teams = [
-    { name: result.team1, idxs: [0,1], total: 0, holes: 0 },
-    { name: result.team2, idxs: [2,3], total: 0, holes: 0 }
+    { name: result.team1, idxs: [0,1], grossTotal: 0, netTotal: 0, holes: 0 },
+    { name: result.team2, idxs: [2,3], grossTotal: 0, netTotal: 0, holes: 0 }
   ];
   ctx.holes.forEach(function(h) {
     teams.forEach(function(team) {
-      var nets = team.idxs.map(function(pi) {
+      var entries = team.idxs.map(function(pi) {
         var g = getScoreForPlayerHole(ctx.scores, ctx.snap[pi], pi, h.hole);
         if (g === null || isNaN(g)) return null;
-        return g - holeStrokeCount(ctx.strokeSets[pi], h.hole);
-      }).filter(function(v){ return v !== null; });
-      if (nets.length) {
-        team.total += Math.min.apply(null, nets);
+        return { gross: g, net: g - holeStrokeCount(statStrokeSets[pi], h.hole) };
+      }).filter(Boolean);
+      if (entries.length) {
+        team.grossTotal += Math.min.apply(null, entries.map(function(e){ return e.gross; }));
+        team.netTotal += Math.min.apply(null, entries.map(function(e){ return e.net; }));
         team.holes++;
       }
     });
@@ -937,30 +989,42 @@ function computeResultTeamBestBall(result) {
 
 function computeTeamBestBallAnalytics() {
   var stats = {};
-  DEFAULT_TEAMS.forEach(function(t){ stats[t.name] = { name:t.name, rounds:0, total:0, best:Infinity, worst:-Infinity, scores:[] }; });
+  DEFAULT_TEAMS.forEach(function(t){
+    stats[t.name] = { name:t.name, rounds:0, grossTotal:0, netTotal:0, bestGross:Infinity, worstGross:-Infinity, bestNet:Infinity, worstNet:-Infinity, scores:[] };
+  });
   (RESULTS || []).forEach(function(r){
     var teams = computeResultTeamBestBall(r);
     if (!teams) return;
     teams.forEach(function(team){
       if (!team.name || !team.holes) return;
-      if (!stats[team.name]) stats[team.name] = { name:team.name, rounds:0, total:0, best:Infinity, worst:-Infinity, scores:[] };
+      if (!stats[team.name]) stats[team.name] = { name:team.name, rounds:0, grossTotal:0, netTotal:0, bestGross:Infinity, worstGross:-Infinity, bestNet:Infinity, worstNet:-Infinity, scores:[] };
       stats[team.name].rounds++;
-      stats[team.name].total += team.total;
-      stats[team.name].scores.push({ week: r.week, score: team.total, opponent: normalizeTeamName(team.name) === normalizeTeamName(r.team1) ? r.team2 : r.team1 });
-      if (team.total < stats[team.name].best) stats[team.name].best = team.total;
-      if (team.total > stats[team.name].worst) stats[team.name].worst = team.total;
+      stats[team.name].grossTotal += team.grossTotal;
+      stats[team.name].netTotal += team.netTotal;
+      stats[team.name].scores.push({ week: r.week, gross: team.grossTotal, net: team.netTotal, opponent: normalizeTeamName(team.name) === normalizeTeamName(r.team1) ? r.team2 : r.team1 });
+      if (team.grossTotal < stats[team.name].bestGross) stats[team.name].bestGross = team.grossTotal;
+      if (team.grossTotal > stats[team.name].worstGross) stats[team.name].worstGross = team.grossTotal;
+      if (team.netTotal < stats[team.name].bestNet) stats[team.name].bestNet = team.netTotal;
+      if (team.netTotal > stats[team.name].worstNet) stats[team.name].worstNet = team.netTotal;
     });
   });
   return Object.values(stats).map(function(t){
-    t.avg = t.rounds ? (t.total / t.rounds) : null;
-    if (t.best === Infinity) t.best = null;
-    if (t.worst === -Infinity) t.worst = null;
+    t.avgGross = t.rounds ? (t.grossTotal / t.rounds) : null;
+    t.avgNet = t.rounds ? (t.netTotal / t.rounds) : null;
+    // Backward-compatible aliases for older formula/display code.
+    t.avg = t.avgNet;
+    t.best = t.bestNet === Infinity ? null : t.bestNet;
+    t.worst = t.worstNet === -Infinity ? null : t.worstNet;
+    if (t.bestGross === Infinity) t.bestGross = null;
+    if (t.worstGross === -Infinity) t.worstGross = null;
+    if (t.bestNet === Infinity) t.bestNet = null;
+    if (t.worstNet === -Infinity) t.worstNet = null;
     return t;
   }).sort(function(a,b){
-    if (a.avg === null && b.avg === null) return a.name.localeCompare(b.name);
-    if (a.avg === null) return 1;
-    if (b.avg === null) return -1;
-    return a.avg - b.avg || a.name.localeCompare(b.name);
+    if (a.avgNet === null && b.avgNet === null) return a.name.localeCompare(b.name);
+    if (a.avgNet === null) return 1;
+    if (b.avgNet === null) return -1;
+    return a.avgNet - b.avgNet || a.avgGross - b.avgGross || a.name.localeCompare(b.name);
   });
 }
 
@@ -1066,23 +1130,25 @@ function renderTeamBestBallCard(limit) {
   return '<div class="team-bb-list">' + useRows.map(function(t, i){
     var trend = '';
     if (t.scores.length >= 2) {
-      var last = t.scores[t.scores.length - 1].score;
-      var prev = t.scores[t.scores.length - 2].score;
+      var last = t.scores[t.scores.length - 1].net;
+      var prev = t.scores[t.scores.length - 2].net;
       trend = last < prev ? '🔥' : last > prev ? '🧊' : '➖';
     }
-    return '<div class="team-bb-row"><div class="team-bb-rank">' + (i+1) + '</div>' +
+    return '<div class="team-bb-row team-bb-row-wide"><div class="team-bb-rank">' + (i+1) + '</div>' +
       logoImg(t.name, 'team-bb-logo', 'team-bb-placeholder') +
       '<div class="team-bb-name"><b>' + escapeLeagueHtml(t.name) + '</b><span>' + t.rounds + ' round' + (t.rounds === 1 ? '' : 's') + (trend ? ' · ' + trend : '') + '</span></div>' +
-      '<div class="team-bb-metrics"><b>' + t.avg.toFixed(1) + '</b><span>Avg</span></div>' +
-      '<div class="team-bb-metrics"><b>' + t.best + '</b><span>Best</span></div>' +
-      '<div class="team-bb-metrics"><b>' + t.worst + '</b><span>Worst</span></div></div>';
-  }).join('') + '</div>';
+      '<div class="team-bb-metrics"><b>' + (t.avgNet !== null ? t.avgNet.toFixed(1) : '—') + '</b><span>Net Avg</span></div>' +
+      '<div class="team-bb-metrics"><b>' + (t.avgGross !== null ? t.avgGross.toFixed(1) : '—') + '</b><span>Gross Avg</span></div>' +
+      '<div class="team-bb-metrics"><b>' + (t.bestNet !== null ? t.bestNet : '—') + '</b><span>Best Net</span></div>' +
+      '<div class="team-bb-metrics"><b>' + (t.worstNet !== null ? t.worstNet : '—') + '</b><span>Worst Net</span></div></div>';
+  }).join('') + '<div class="analytics-note" style="margin-top:10px;">Team BB is split: Gross BB uses raw best-ball scores; Net BB uses each player’s individual 9-hole handicap strokes, not relative match-play strokes.</div></div>';
 }
 
 function computeScoringRates(playerStats, mode) {
   var useNet = mode === 'net';
+  var minHoles = getStatQualifyingHolesMinimum(playerStats);
   return Object.values(playerStats || {}).filter(function(p){
-    return p.totalHoles > 0 && isOfficialRosterPlayerName(p.name);
+    return p.totalHoles >= minHoles && isOfficialRosterPlayerName(p.name);
   }).map(function(p){
     var birdies = useNet ? (p.netBirdies || 0) : (p.birdies || 0);
     var pars    = useNet ? (p.netPars || 0)    : (p.pars || 0);
@@ -1127,9 +1193,10 @@ function renderScoringRatesSection(playerStats) {
   if (!rows.length) return '';
   var isNet = mode === 'net';
   var prefix = isNet ? 'Net ' : '';
+  var minHoles = getStatQualifyingHolesMinimum(playerStats);
   var note = isNet
-    ? 'Net mode uses each roster player’s own individual 9-hole handicap strokes by hole. It does not use relative match-play strokes.'
-    : 'Gross mode uses raw hole scores versus par. Subs are excluded from these season leaderboards.';
+    ? 'Net mode uses each roster player’s own individual 9-hole handicap strokes by hole. It does not use relative match-play strokes. Minimum to qualify: ' + minHoles + ' holes.'
+    : 'Gross mode uses raw hole scores versus par. Subs are excluded from these season leaderboards. Minimum to qualify: ' + minHoles + ' holes.';
   return '<div class="analytics-section"><div class="analytics-title-row"><div class="analytics-title">Birdie / Par / Bogey / Double Rates <span class="rate-mode-pill">' + (isNet ? 'Net' : 'Gross') + '</span></div>' +
     '<div class="rate-toggle" role="group" aria-label="Scoring rate mode">' +
       '<button class="rate-toggle-btn' + (!isNet ? ' active' : '') + '" onclick="setScoringRateMode(\'gross\',this)">Gross</button>' +
@@ -1167,13 +1234,13 @@ function renderPowerRankingsCard() {
   var rows = computePowerRankings();
   if (!rows.length) return '<div class="dash-empty">Power rankings will populate after results are posted.</div>';
   return '<div class="power-rankings-list">' + rows.map(function(t, i){
-    var bbText = t.bbAvg ? t.bbAvg.toFixed(1) + ' BB Avg' : 'No BB Avg yet';
+    var bbText = t.bbAvg ? t.bbAvg.toFixed(1) + ' Net BB Avg' : 'No BB Avg yet';
     var trend = t.streak ? streakBadge(t.streak) : '';
     return '<div class="power-row"><div class="power-rank">' + (i+1) + '</div>' +
       logoImg(t.name, 'power-logo', 'power-placeholder') +
       '<div class="power-team"><b>' + escapeLeagueHtml(t.name) + '</b><span>' + t.record + ' · ' + t.holesWon + ' HW · ' + bbText + '</span></div>' +
       '<div class="power-score">' + Math.round(t.score) + '</div>' + trend + '</div>';
-  }).join('') + '<div class="power-note">Formula: record, holes won, hole differential, team best-ball average, and recent form.</div></div>';
+  }).join('') + '<div class="power-note">Formula: record, holes won, hole differential, net team best-ball average, and recent form.</div></div>';
 }
 
 function renderStatsAnalyticsSections(playerStats) {
@@ -1212,6 +1279,7 @@ function buildDashboard() {
 
   try {
   container.innerHTML = `
+    ${renderDataStatusBar()}
     <div class="dashboard-panel update-card">
       <div class="update-icon">📣</div>
       <div>
