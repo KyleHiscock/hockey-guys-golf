@@ -1,6 +1,4 @@
-Hockey Guys Golf League website root files - v4.9.2
-
-Upload these files to the ROOT of the GitHub Pages repository:
+Upload these files to the GitHub Pages repository root and replace the current versions:
 
 admin.html
 index.html
@@ -11,28 +9,5 @@ style.css
 theme-polished.css
 robots.txt
 
-Optional / harmless if present:
-README.md
-
-Do NOT upload duplicate generated filenames such as:
-admin(37).html
-admin-fixed.html
-admin-v4.9.2.html
-index(32).html
-index-fixed.html
-index-v4.9.2.html
-public(40).js
-public-fixed.js
-public-v4.9.2.js
-admin(42).js
-admin-fixed.js
-admin-v4.9.2.js
-style(28).css
-style-v4.9.2.css
-theme-polished(25).css
-theme-polished-v4.9.2.css
-
-Code.gs / Pasted code files belong in Google Apps Script only, not the GitHub Pages website root.
-
-
-V4.9.4 note: dashboard Latest Results now shows all posted results for the latest week instead of the scrolling carousel.
+Do not upload duplicate renamed files such as admin-v4.9.6.html or public-v4.9.6.js.
+No Apps Script redeploy is required for v4.9.6.

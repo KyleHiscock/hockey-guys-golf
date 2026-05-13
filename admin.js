@@ -71,7 +71,7 @@ let RESULTS = [];
 var SKINS_DATA = [];
 var CTP_DATA = [];
 const STORAGE_KEY = 'hggl_2026_state_v2';
-const HGL_FRONTEND_VERSION = 'v4.9.3-scorecard-handicap';
+const HGL_FRONTEND_VERSION = 'v4.9.6-net-handicap-correction';
 try { console.log('Hockey Guys Golf League frontend ' + HGL_FRONTEND_VERSION); } catch(e) {}
 let currentUser = null;
 let scorecardScores = {};
@@ -122,6 +122,16 @@ function calcPlayerStrokes(players, side) {
   const validHandicaps = nineHoleHandicaps.filter(h => h !== null);
   const minHandicap = validHandicaps.length ? Math.min(...validHandicaps) : 0;
   return nineHoleHandicaps.map(h => h !== null ? Math.max(0, Math.round((h - minHandicap) * 0.9)) : 0);
+}
+
+// Individual net-stat handicap for player stat cards / low-net leaders.
+// This uses the player's own rounded 9-hole playing handicap (the number shown before any +relative match-play strokes).
+function calcPlayerStatStrokes(players, side) {
+  return players.map(p => {
+    if (p.isAbsent || !p.name || !p.name.trim()) return 0;
+    const h = nineHoleHdcp(p.ghin, side);
+    return h !== null ? Math.max(0, h) : 0;
+  });
 }
 
 function getSideHcpRankMap(holes) {
@@ -579,6 +589,8 @@ async function fetchLeagueDataFromSheets(silent = false) {
   try {
     const json = await leagueJsonpRequest('getLeagueData');
     applyLeagueDataFromSheet(json.data || {});
+    // Save the latest Google Sheets payload locally so the site can render immediately on the next visit.
+    persistState();
     rebuildAll();
     buildScheduledMatchSelect();
 
@@ -629,12 +641,14 @@ function saveAdminKey(key) {
 
 async function initLeagueSite() {
   loadState();
-  const loadedFromSheets = await fetchLeagueDataFromSheets(true);
-  if (!loadedFromSheets) {
-    rebuildAll();
-    if (typeof buildScheduledMatchSelect === 'function') buildScheduledMatchSelect();
-    if (typeof initCommissionerNoteEditor === 'function') initCommissionerNoteEditor();
-  }
+  // Render immediately from the last cached copy instead of waiting for Google Apps Script.
+  rebuildAll();
+  if (typeof buildScheduledMatchSelect === 'function') buildScheduledMatchSelect();
+  if (typeof initCommissionerNoteEditor === 'function') initCommissionerNoteEditor();
+
+  // Then refresh silently from Sheets. When fresh data arrives, fetchLeagueDataFromSheets()
+  // will cache it and rebuild the page again.
+  fetchLeagueDataFromSheets(true);
 }
 
 // ── LOCAL DATA + BACKUPS ──
@@ -1023,7 +1037,7 @@ function getResultPlayerTotals(r) {
   if (!Object.keys(scores).length || snap.length < 4) return [];
   const side = r.side === 'Front 9' ? 'front' : 'back';
   const holes = side === 'front' ? COURSE.front : COURSE.back;
-  const strokes = calcPlayerStrokes(snap, side);
+  const strokes = calcPlayerStatStrokes(snap, side);
   const strokeSets = snap.map(function(p, i) { return getStrokeHoles(strokes[i], holes); });
   return snap.map(function(p, pi) {
     let gross = 0, net = 0, holeCount = 0;
@@ -2201,9 +2215,9 @@ function computePlayerStats() {
       });
     }
 
-    // Use the same match-play stroke allocation shown on the scorecard so dashboard leaders
-    // agree with the visible player net totals.
-    var playerStrokes = calcPlayerStrokes(allPlayers, side);
+    // For individual low-net stats, use each player's own rounded 9-hole handicap.
+    // Match-play relative strokes are still used only for match scoring / hole winners.
+    var playerStrokes = calcPlayerStatStrokes(allPlayers, side);
     var strokeMaps = allPlayers.map(function(p, i) { return getStrokeHoles(playerStrokes[i] || 0, holes); });
     var wlCounted = {};
 
