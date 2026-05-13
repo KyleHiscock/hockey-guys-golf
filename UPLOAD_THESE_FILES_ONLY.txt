@@ -33,3 +33,6 @@ theme-polished(25).css
 theme-polished-v4.9.2.css
 
 Code.gs / Pasted code files belong in Google Apps Script only, not the GitHub Pages website root.
+
+
+V4.9.4 note: dashboard Latest Results now shows all posted results for the latest week instead of the scrolling carousel.

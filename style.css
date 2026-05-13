@@ -1006,3 +1006,69 @@ body{font-family:'Barlow',sans-serif;background:var(--dark);color:var(--text);mi
 /* V4.9.2 — keep scorecard handicap row from colliding with dashboard handicap-tracker rows */
 .scorecard tr.scorecard-hcp-row{display:table-row;}
 .scorecard tr.scorecard-hcp-row td{display:table-cell;}
+
+
+/* ── V4.9.4 dashboard latest-results list (no carousel/scroll) ── */
+.latest-results-card{overflow:visible;}
+.latest-week-results-wrap{margin-top:10px;}
+.latest-week-results-list{
+  display:grid;
+  grid-template-columns:1fr;
+  gap:8px;
+}
+.latest-week-result-row{
+  display:grid;
+  grid-template-columns:54px minmax(0,1fr);
+  gap:9px;
+  align-items:start;
+  padding:9px 10px;
+  border-radius:13px;
+  border:1px solid rgba(255,255,255,0.10);
+  background:rgba(0,0,0,0.18);
+}
+.latest-week-score{
+  color:var(--gold,#d8b35d);
+  font-family:'Bebas Neue','Barlow Condensed',sans-serif;
+  font-size:19px;
+  line-height:1;
+  letter-spacing:1.2px;
+  white-space:nowrap;
+}
+.latest-week-body{min-width:0;}
+.latest-week-matchup{
+  display:flex;
+  flex-wrap:wrap;
+  gap:3px;
+  align-items:center;
+  color:var(--text,#f0f4f8);
+  font-family:'Inter Tight','Barlow',sans-serif;
+  font-size:12px;
+  font-weight:800;
+  line-height:1.18;
+}
+.latest-week-matchup .winner{color:var(--ice,#9fc9dc);}
+.latest-week-vs{color:var(--muted,#9aaabc);font-size:10px;text-transform:uppercase;letter-spacing:.8px;margin:0 2px;}
+.latest-week-winner{
+  margin-top:2px;
+  color:var(--muted,#9aaabc);
+  font-family:'Inter Tight','Barlow',sans-serif;
+  font-size:10.5px;
+  font-weight:650;
+  line-height:1.15;
+}
+.latest-week-players{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:2px 8px;
+  margin-top:6px;
+  color:var(--muted,#9aaabc);
+  font-family:'Inter Tight','Barlow',sans-serif;
+  font-size:10px;
+  line-height:1.15;
+}
+.latest-week-players span{display:block;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.latest-week-players b{color:var(--text,#f0f4f8);font-weight:800;}
+@media (max-width:640px){
+  .latest-week-result-row{grid-template-columns:48px minmax(0,1fr);}
+  .latest-week-players{grid-template-columns:1fr;}
+}

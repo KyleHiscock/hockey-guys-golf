@@ -859,10 +859,7 @@ function buildDashboard() {
   const noteText = (localStorage.getItem("hggl2026_commissioner_note") || "Week 1 starts Tuesday, May 5th. Please arrive early, check in with your group, and make sure GHIN scores are posted after the round.").trim();
   const safeNote = escapeLeagueHtml(noteText).replace(/\n/g, '<br>');
   const latestLabel = latestInfo.week ? 'Latest Results · Week ' + latestInfo.week : 'Latest Results';
-  const latestSub = firstLatest ? firstLatest.team1 + ' vs ' + firstLatest.team2 : 'Check back after Week 1';
-  const latestScore = firstLatest ? getDisplayedMatchResult(firstLatest) : 'TBD';
-  const latestPlayers = firstLatest ? renderLatestPlayerTotals(firstLatest) : '';
-  const latestStrip = latestInfo.results.length ? renderLatestResultsStrip(latestInfo.results, 0) : '';
+  const latestWeekResults = latestInfo.results.length ? renderLatestWeekResultsList(latestInfo.results) : '<div class="dash-empty">Check back after Week 1</div>';
 
   try {
   container.innerHTML = `
@@ -877,11 +874,7 @@ function buildDashboard() {
       <div class="dash-card league-leaders-card"><div class="dash-label">League Leaders</div>${(typeof buildLeadersCardHTML === 'function') ? buildLeadersCardHTML() : ''}</div>
       <div class="dash-card ice latest-results-card" id="latest-result-card">
         <div class="dash-label" id="lr-label">${latestLabel}</div>
-        <div id="lr-score" class="dash-value">${latestScore}</div>
-        <div id="lr-teams" class="dash-sub">${latestSub}</div>
-        <div id="lr-player-totals">${latestPlayers}</div>
-        <div id="lr-scroll" class="latest-results-strip">${latestStrip}</div>
-        <div id="lr-dots" class="lr-dots"></div>
+        <div id="latest-week-results" class="latest-week-results-wrap">${latestWeekResults}</div>
       </div>
     </div>
     <div class="dashboard-grid dashboard-grid-two" style="margin-bottom:14px;">
@@ -901,7 +894,7 @@ function buildDashboard() {
     </div>
     <div class="dashboard-panel playoff-dashboard"><div class="panel-title">If Playoffs Started Today</div><div class="dash-empty" style="margin-bottom:10px">Opening-round matchups based on current standings. If teams have the same record, total holes won is the standings tiebreaker. Teams reseed after each round.</div><div id="playoff-picture-container"></div></div>`;
   buildPlayoffPicture();
-  initLatestResultCarousel();
+  clearInterval(_lrTimer);
   } catch(e) { console.error('buildDashboard error:', e); }
 }
 
@@ -914,6 +907,32 @@ function getLatestResultsInfo() {
   const latestWeek = Math.max.apply(null, weeks);
   const results = RESULTS.filter(function(r){ return parseInt(r.week, 10) === latestWeek; });
   return { week: latestWeek, results: results };
+}
+
+
+function renderLatestWeekResultsList(results) {
+  return '<div class="latest-week-results-list">' + results.map(function(r){
+    const displayInfo = getDisplayedResultInfo(r);
+    const winnerName = displayInfo.winner || '';
+    const t1w = winnerName === r.team1;
+    const t2w = winnerName === r.team2;
+    const playerTotals = getResultPlayerTotals(r).filter(function(p){ return p.hasScores; });
+    const playersHtml = playerTotals.length ? '<div class="latest-week-players">' + playerTotals.map(function(p){
+      return '<span><b>' + escapeLeagueHtml(p.name) + '</b> ' + p.gross + '/' + p.net + '</span>';
+    }).join('') + '</div>' : '';
+    return '<div class="latest-week-result-row">' +
+      '<div class="latest-week-score">' + escapeLeagueHtml(displayInfo.matchResult || 'Final') + '</div>' +
+      '<div class="latest-week-body">' +
+        '<div class="latest-week-matchup">' +
+          '<span class="' + (t1w ? 'winner' : '') + '">' + escapeLeagueHtml(r.team1 || '') + '</span>' +
+          '<span class="latest-week-vs">vs</span>' +
+          '<span class="' + (t2w ? 'winner' : '') + '">' + escapeLeagueHtml(r.team2 || '') + '</span>' +
+        '</div>' +
+        (winnerName ? '<div class="latest-week-winner">Winner: ' + escapeLeagueHtml(winnerName) + '</div>' : '<div class="latest-week-winner">Tie / pending</div>') +
+        playersHtml +
+      '</div>' +
+    '</div>';
+  }).join('') + '</div>';
 }
 
 function renderLatestResultsStrip(results, activeIndex) {
