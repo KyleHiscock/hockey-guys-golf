@@ -1,0 +1,35 @@
+Hockey Guys Golf League website root files - v4.9.2
+
+Upload these files to the ROOT of the GitHub Pages repository:
+
+admin.html
+index.html
+admin.js
+public.js
+polish.js
+style.css
+theme-polished.css
+robots.txt
+
+Optional / harmless if present:
+README.md
+
+Do NOT upload duplicate generated filenames such as:
+admin(37).html
+admin-fixed.html
+admin-v4.9.2.html
+index(32).html
+index-fixed.html
+index-v4.9.2.html
+public(40).js
+public-fixed.js
+public-v4.9.2.js
+admin(42).js
+admin-fixed.js
+admin-v4.9.2.js
+style(28).css
+style-v4.9.2.css
+theme-polished(25).css
+theme-polished-v4.9.2.css
+
+Code.gs / Pasted code files belong in Google Apps Script only, not the GitHub Pages website root.
