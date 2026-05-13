@@ -71,7 +71,7 @@ let RESULTS = [];
 var SKINS_DATA = [];
 var CTP_DATA = [];
 const STORAGE_KEY = 'hggl_2026_state_v2';
-const HGL_FRONTEND_VERSION = 'v4.9.11-ghin-matchplay-strokes';
+const HGL_FRONTEND_VERSION = 'v4.9.12-ghin-unified-handicap';
 try { console.log('Hockey Guys Golf League frontend ' + HGL_FRONTEND_VERSION); } catch(e) {}
 let currentUser = null;
 let scorecardScores = {};
@@ -80,7 +80,13 @@ let scorecardFocusKey = null;  // "pid_hole" -> gross score string
 // ── HANDICAP ──
 // USGA Course Handicap formula:
 //   Course Handicap = Index × (Slope ÷ 113) + (Course Rating − Par)
-// For 9 holes: compute full 18-hole course handicap first, then halve and round.
+// League 9-hole handicap handling is matched to the GHIN/scoring-app examples:
+//   1) calculate the 18-hole course handicap
+//   2) round that 18-hole course handicap to a whole number
+//   3) use the low 9-hole half of that number by flooring after / 2
+//      examples: 5 → 2, 8 → 4, 9 → 4, 14 → 7, 22 → 11, 30 → 15, 31 → 15
+// Match-play strokes are then calculated from those 9-hole handicaps by
+// comparing to the lowest player in the match and applying the 90% allowance.
 function courseHandicap18Raw(ghinIndex) {
   const idx = parseFloat(ghinIndex);
   if (isNaN(idx)) return null;
@@ -92,64 +98,45 @@ function courseHandicap18Display(ghinIndex) {
   return raw === null ? null : Math.round(raw * 10) / 10;
 }
 
-function roundHalfToEven(value) {
-  const floor = Math.floor(value);
-  const diff = value - floor;
-  const EPS = 1e-9;
-  if (Math.abs(diff - 0.5) < EPS) return floor % 2 === 0 ? floor : floor + 1;
-  return Math.round(value);
+function courseHandicap18Rounded(ghinIndex) {
+  const raw = courseHandicap18Raw(ghinIndex);
+  return raw === null ? null : Math.round(raw);
+}
+
+function roundHandicapAllowance(value) {
+  // Use conventional rounding for the 90% allowance. Small floating-point
+  // protection avoids cases like 3.599999999 becoming 3.
+  return Math.round((Number(value) || 0) + 1e-9);
 }
 
 function nineHoleHdcp(ghinIndex, side) {
-  const full18 = courseHandicap18Display(ghinIndex);
-  if (full18 === null) return null;
-
-  // Individual 9-hole handicap used for player net totals/stat cards.
-  // Do NOT apply the 90% match-play allowance here. 90% is applied only after
-  // comparing each player to the lowest handicap player in calcPlayerStrokes().
-  // Examples expected by the league:
-  // Kyle 6.0: 5.0 / 2 = 2.5 → 2
-  // Gracey 8.6: 7.9 / 2 = 3.95 → 4
-  // Drexy 10.0: 9.5 / 2 = 4.75 → 4 per GHIN display
-  // Tank 27.1: 28.4 / 2 = 14.2 → 14
-  const raw9 = full18 / 2;
-
-  // GHIN edge case observed in league screenshots: displayed 18-hole course
-  // handicap of 9.5 produces a 9-hole handicap of 4, not 5.
-  if (Math.abs(raw9 - 4.75) < 0.000001) return 4;
-
-  return Math.max(0, roundHalfToEven(raw9));
+  const full18Rounded = courseHandicap18Rounded(ghinIndex);
+  if (full18Rounded === null) return null;
+  return Math.max(0, Math.floor(full18Rounded / 2));
 }
+
 function nineHoleHdcpRaw(ghinIndex) {
-  const full18 = courseHandicap18Display(ghinIndex);
-  return full18 === null ? null : (full18 / 2);
-}
-
-function roundedMatchPlayAllowance(ghinIndex, side) {
-  const raw9 = nineHoleHdcpRaw(ghinIndex);
-  if (raw9 === null) return null;
-
-  // Match-play allowance should mirror the scoring app/GHIN flow:
-  // 18-hole course handicap rounded to 1 decimal → raw 9-hole handicap → 90% allowance → rounded playing handicap.
-  // Then each player is compared to the lowest player in that specific match.
-  // This is separate from individual net/stat handicaps.
-  return Math.max(0, Math.round(raw9 * 0.9));
+  // Kept for compatibility with any older display/debug calls, but the active
+  // scoring logic should use nineHoleHdcp() so every match and stat card uses
+  // the same GHIN-style 9-hole number.
+  return nineHoleHdcp(ghinIndex);
 }
 
 // Relative match-play strokes only.
 // Individual stat/net totals use calcPlayerStatStrokes() below instead.
 function calcPlayerStrokes(players, side) {
-  const matchAllowances = players.map(p => {
+  const hdcps = players.map(p => {
     if (p.isAbsent || !p.name || !p.name.trim()) return null;
-    return roundedMatchPlayAllowance(p.ghin, side);
+    return nineHoleHdcp(p.ghin, side);
   });
-  const validAllowances = matchAllowances.filter(h => h !== null);
-  const minAllowance = validAllowances.length ? Math.min(...validAllowances) : 0;
-  return matchAllowances.map(h => h !== null ? Math.max(0, h - minAllowance) : 0);
+  const validHdcps = hdcps.filter(h => h !== null);
+  const minHdcp = validHdcps.length ? Math.min(...validHdcps) : 0;
+  return hdcps.map(h => h !== null ? Math.max(0, roundHandicapAllowance((h - minHdcp) * 0.9)) : 0);
 }
 
 // Individual net-stat handicap for player stat cards / low-net leaders.
-// This uses the player's own rounded 9-hole playing handicap (the number shown before any +relative match-play strokes).
+// This uses the player's own 9-hole GHIN-style handicap before any relative
+// match-play comparison/90% allowance.
 function calcPlayerStatStrokes(players, side) {
   return players.map(p => {
     if (p.isAbsent || !p.name || !p.name.trim()) return 0;
