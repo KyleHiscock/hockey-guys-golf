@@ -71,7 +71,7 @@ let RESULTS = [];
 var SKINS_DATA = [];
 var CTP_DATA = [];
 const STORAGE_KEY = 'hggl_2026_state_v2';
-const HGL_FRONTEND_VERSION = 'v4.9.2-scorecard-handicap';
+const HGL_FRONTEND_VERSION = 'v4.9.3-scorecard-handicap';
 try { console.log('Hockey Guys Golf League frontend ' + HGL_FRONTEND_VERSION); } catch(e) {}
 let currentUser = null;
 let scorecardScores = {};
@@ -1723,19 +1723,17 @@ function renderScorecard() {
   html += `<tr class="match-row" style="background:rgba(0,0,0,0.25)">
     <td colspan="2" style="text-align:left;padding-left:8px;font-family:'Barlow Condensed',sans-serif;font-size:10px;color:var(--muted);font-weight:700;letter-spacing:1px">MATCH</td>`;
 
-  let runningStatus = 0;
-  let runningOver = false;
-  holes.forEach((h, hi) => {
-    if(runningOver) { html+=`<td></td>`; return; }
+  // Match row shows every completed hole, even after the match is mathematically closed.
+  // The result label can still lock at 3&2, 2&1, etc., but every later hole
+  // must continue to count for season-long holes-won tiebreakers.
+  holes.forEach((h) => {
     const t1nets = [0,1].map(pi=>{const key=`${players[pi].id}_${h.hole}`;const g=scorecardScores[key]?parseInt(scorecardScores[key]):null;return g!==null?g-holeStrokeCount(strokeSets[pi], h.hole):null;}).filter(s=>s!==null);
     const t2nets = [2,3].map(pi=>{const key=`${players[pi].id}_${h.hole}`;const g=scorecardScores[key]?parseInt(scorecardScores[key]):null;return g!==null?g-holeStrokeCount(strokeSets[pi], h.hole):null;}).filter(s=>s!==null);
     if(!t1nets.length||!t2nets.length){ html+=`<td class="ev">·</td>`; return; }
     const t1b=Math.min(...t1nets), t2b=Math.min(...t2nets);
-    if(t1b<t2b){runningStatus++;html+=`<td class="up">▲</td>`;}
-    else if(t2b<t1b){runningStatus--;html+=`<td class="dn">▼</td>`;}
+    if(t1b<t2b){html+=`<td class="up">▲</td>`;}
+    else if(t2b<t1b){html+=`<td class="dn">▼</td>`;}
     else{html+=`<td class="ev">–</td>`;}
-    const left=holes.length-(hi+1);
-    if(Math.abs(runningStatus)>left) runningOver=true;
   });
   html += `<td></td></tr></tbody>`;
 
