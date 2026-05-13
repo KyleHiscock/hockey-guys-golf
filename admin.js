@@ -71,7 +71,7 @@ let RESULTS = [];
 var SKINS_DATA = [];
 var CTP_DATA = [];
 const STORAGE_KEY = 'hggl_2026_state_v2';
-const HGL_FRONTEND_VERSION = 'v4.9.7-dashboard-full-lists';
+const HGL_FRONTEND_VERSION = 'v4.9.8-nine-hole-handicap-fix';
 try { console.log('Hockey Guys Golf League frontend ' + HGL_FRONTEND_VERSION); } catch(e) {}
 let currentUser = null;
 let scorecardScores = {};
@@ -103,11 +103,18 @@ function roundHalfToEven(value) {
 function nineHoleHdcp(ghinIndex, side) {
   const full18 = courseHandicap18Display(ghinIndex);
   if (full18 === null) return null;
-  return roundHalfToEven(full18 / 2);
+  // League/GHIN-style 9-hole playing handicap:
+  // displayed 18-hole course handicap → halve for 9 holes → apply 90% allowance → round.
+  // Examples from the league screenshots:
+  // 6.0 index: 5.0 / 2 * .90 = 2.25 → 2
+  // 8.6 index: 7.9 / 2 * .90 = 3.555 → 4
+  // 10.0 index: 9.5 / 2 * .90 = 4.275 → 4
+  // 11.3 index: 10.9 / 2 * .90 = 4.905 → 5
+  return Math.round((full18 / 2) * 0.9);
 }
 function nineHoleHdcpRaw(ghinIndex) {
-  const full18 = courseHandicap18Raw(ghinIndex);
-  return full18 === null ? null : full18 / 2;
+  const full18 = courseHandicap18Display(ghinIndex);
+  return full18 === null ? null : (full18 / 2) * 0.9;
 }
 
 // Strokes each player gets relative to the lowest 9-hole handicap player.
