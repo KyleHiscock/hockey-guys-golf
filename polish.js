@@ -1,4 +1,4 @@
-// V4.9.7 polish layer — commissioner note + league leaders + full league attendance + full handicap tracker
+// V4.9.9 polish layer — commissioner note + league leaders + full league attendance + roster-only handicap tracker
 // buildDashboard, buildResults, buildSchedule handled by public.js — do NOT add them here
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -17,6 +17,10 @@ const ALL_PLAYERS = [
   'CJ','Justyn',
   'Tank','Bob',
 ];
+const LEAGUE_PLAYER_SET = new Set(ALL_PLAYERS.map(name => String(name).trim().toLowerCase()));
+function isLeaguePlayerName(name) {
+  return LEAGUE_PLAYER_SET.has(String(name || '').trim().toLowerCase());
+}
 
 function escapeLeagueHtml(value) {
   return String(value || '').replace(/[&<>"']/g, ch =>
@@ -244,17 +248,29 @@ function buildAttendanceCardHTML() {
   });
 
   const totalWeeks = Math.max.apply(null, sorted.map(p => p.weeksTracked || 0));
+  const maxPct = Math.max.apply(null, sorted.map(p => p.weeksTracked > 0 ? p.weeksAtBar / p.weeksTracked : 0));
+  const maxCount = Math.max.apply(null, sorted.map(p => p.weeksAtBar || 0));
+  const minPct = Math.min.apply(null, sorted.map(p => p.weeksTracked > 0 ? p.weeksAtBar / p.weeksTracked : 0));
+  const minCount = Math.min.apply(null, sorted.map(p => p.weeksAtBar || 0));
+
+  function attendanceStatusBadge(p) {
+    const pct = p.weeksTracked > 0 ? (p.weeksAtBar / p.weeksTracked) : 0;
+    const isTop = pct === maxPct && p.weeksAtBar === maxCount && p.weeksAtBar > 0;
+    const isBottom = sorted.length > 1 && pct === minPct && p.weeksAtBar === minCount;
+    if (isBottom) return '<span class="att-status att-status-ghost" title="Bottom of the bar attendance standings">👻</span>';
+    if (isTop) return '<span class="att-status att-status-fire" title="Top of the bar attendance standings">🔥</span>';
+    return '<span class="att-status att-status-cold" title="Middle of the pack">🥶</span>';
+  }
 
   function attendRow(p, index) {
-    const streakBadge  = p.streak >= 2 ? '<span class="att-streak">🔥' + p.streak + '</span>' : '';
-    const perfectBadge = p.perfectSoFar ? '<span class="att-perfect">🏅</span>' : '';
+    const statusBadge = attendanceStatusBadge(p);
     const pct      = p.weeksTracked > 0 ? Math.round((p.weeksAtBar / p.weeksTracked) * 100) : 0;
-    const barColor = pct >= 75 ? 'var(--green)' : pct >= 50 ? 'var(--gold)' : 'var(--red)';
+    const barColor = pct >= 75 ? 'var(--green)' : pct >= 50 ? 'var(--gold)' : 'var(--ice)';
     const barWidth = Math.max(pct, 4);
     return '<div class="att-row">' +
       '<span class="att-medal">' + (index + 1) + '</span>' +
       '<div class="att-info">' +
-        '<span class="att-name">' + escapeLeagueHtml(p.name) + perfectBadge + streakBadge + '</span>' +
+        '<span class="att-name">' + escapeLeagueHtml(p.name) + statusBadge + '</span>' +
         '<div class="att-bar-wrap"><div class="att-bar" style="width:' + barWidth + '%;background:' + barColor + '"></div></div>' +
       '</div>' +
       '<span class="att-count">' + p.weeksAtBar + '<span class="att-of">/' + p.weeksTracked + '</span></span>' +
@@ -278,6 +294,8 @@ function computeHandicapStats() {
     const wk   = parseInt(r.Week, 10);
     const idx  = parseFloat(r.GHINIndex);
     if (!name || isNaN(wk) || isNaN(idx)) return;
+    // Do not show subs in the public handicap tracker. The tracker is for regular league players only.
+    if (!isLeaguePlayerName(name)) return;
     if (!byPlayer[name]) byPlayer[name] = [];
     byPlayer[name].push({ week: wk, index: idx });
   });

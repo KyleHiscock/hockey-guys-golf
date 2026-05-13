@@ -71,7 +71,7 @@ let RESULTS = [];
 var SKINS_DATA = [];
 var CTP_DATA = [];
 const STORAGE_KEY = 'hggl_2026_state_v2';
-const HGL_FRONTEND_VERSION = 'v4.9.8-nine-hole-handicap-fix';
+const HGL_FRONTEND_VERSION = 'v4.9.9-roster-attendance-polish';
 try { console.log('Hockey Guys Golf League frontend ' + HGL_FRONTEND_VERSION); } catch(e) {}
 let currentUser = null;
 let scorecardScores = {};
