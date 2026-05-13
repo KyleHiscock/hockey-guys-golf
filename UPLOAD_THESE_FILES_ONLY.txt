@@ -1,4 +1,6 @@
-Upload these files to the GitHub Pages repository root:
+Hockey Guys Golf League — Website Root Files v4.9.10
+
+Upload only these files to the root of the GitHub Pages repository:
 
 admin.html
 index.html
@@ -9,6 +11,13 @@ style.css
 theme-polished.css
 robots.txt
 
-Optional README files are included only for reference.
+Do not upload duplicate versioned names like admin-v4.9.10.html or public-v4.9.10.js.
 
-Do not upload duplicate versioned names like admin-v4.9.9.html or public-v4.9.9.js.
+No Apps Script redeploy is required for this front-end update.
+
+Fixes included:
+- Individual net stats use each player's 9-hole handicap, not 90% match-play allowance.
+- Tank 46 gross should calculate to 32 net when he receives 14 individual strokes.
+- Drexy 10.0 GHIN edge case remains 4 individual strokes based on the GHIN screenshot.
+- Match scoring still uses relative 90% match-play strokes.
+- Keeps v4.9.9 polish: full league attendance, full roster-only handicap tracker, latest results logos, and faster cached loading.

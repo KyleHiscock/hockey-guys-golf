@@ -1,4 +1,4 @@
-// V4.9.9 polish layer — commissioner note + league leaders + full league attendance + roster-only handicap tracker
+// V4.9.10 polish layer — commissioner note + league leaders + full league attendance + roster-only handicap tracker
 // buildDashboard, buildResults, buildSchedule handled by public.js — do NOT add them here
 
 // ── Constants ─────────────────────────────────────────────────────────────────
