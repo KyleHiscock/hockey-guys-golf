@@ -1,4 +1,4 @@
-# HGGL v4.9.19 Manual Strokes Update
+# HGGL v4.9.21 Manual Strokes + Tiebreaker Fix
 
 This update changes score entry so official match strokes are copied from Squabbit instead of calculated by the website.
 
@@ -21,4 +21,4 @@ This update changes score entry so official match strokes are copied from Squabb
 
 ## Upload files
 
-Replace the existing GitHub files with the files in this ZIP. The HTML uses `v=4.9.19-manual-strokes` cache-busting so desktop and mobile should pull the new JS/CSS.
+Replace the existing GitHub files with the files in this ZIP. The HTML uses `v=4.9.21-manual-strokes-tiebreaker-fix` cache-busting so desktop and mobile should pull the new JS/CSS.

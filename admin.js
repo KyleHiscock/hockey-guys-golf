@@ -138,6 +138,22 @@ function roundHandicapAllowance(value) {
   return Math.round((Number(value) || 0) + 1e-9);
 }
 
+
+function getManualStrokeNumber(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const n = parseInt(value, 10);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+function playerIsActiveForStrokes(player) {
+  return !!(player && !player.isAbsent && String(player.name || '').trim());
+}
+
+function allActivePlayersHaveManualStrokes(players) {
+  const active = (players || []).filter(playerIsActiveForStrokes);
+  return active.length > 0 && active.every(p => getManualStrokeNumber(p.manualStrokes ?? p.matchStrokes ?? p.strokesReceived) !== null);
+}
+
 function nineHoleHdcp(ghinIndex, side) {
   const full18Rounded = courseHandicap18Rounded(ghinIndex);
   if (full18Rounded === null) return null;
@@ -154,6 +170,14 @@ function nineHoleHdcpRaw(ghinIndex) {
 // Relative match-play strokes only.
 // Individual stat/net totals use calcPlayerStatStrokes() below instead.
 function calcPlayerStrokes(players, side) {
+  // Official match strokes should come directly from Squabbit when entered.
+  // If every active player has Strokes Received filled in, those exact values
+  // drive dots, match-play hole results, and the saved score snapshot.
+  if (allActivePlayersHaveManualStrokes(players)) {
+    return players.map(p => playerIsActiveForStrokes(p) ? getManualStrokeNumber(p.manualStrokes ?? p.matchStrokes ?? p.strokesReceived) : 0);
+  }
+
+  // Fallback only for previewing before strokes are entered.
   const hdcps = players.map(p => {
     if (p.isAbsent || !p.name || !p.name.trim()) return null;
     return nineHoleHdcp(p.ghin, side);
@@ -167,6 +191,10 @@ function calcPlayerStrokes(players, side) {
 // This uses the player's own 9-hole GHIN-style handicap before any relative
 // match-play comparison/90% allowance.
 function calcPlayerStatStrokes(players, side) {
+  // Actual net-score handicap for tiebreakers, net stats, and low-net leaders.
+  // IMPORTANT: this is intentionally NOT the manual match-play strokes copied from Squabbit.
+  // Manual Strokes Received are relative match-play strokes; actual net totals use each
+  // player's own 9-hole course handicap from GHIN/course math.
   return players.map(p => {
     if (p.isAbsent || !p.name || !p.name.trim()) return 0;
     const h = nineHoleHdcp(p.ghin, side);
@@ -391,7 +419,14 @@ function normalizeSnapshotPlayer(raw, index, row) {
     ]),
     team: normalizeTeamName(raw.team || raw.Team || getRowValue(row, [
       'P' + playerNo + 'Team', 'P' + playerNo + ' Team', 'Player' + playerNo + 'Team', 'Player ' + playerNo + ' Team'
-    ]) || sideTeam)
+    ]) || sideTeam),
+    manualStrokes: getManualStrokeNumber(raw.manualStrokes ?? raw.matchStrokes ?? raw.strokesReceived ?? raw.StrokesReceived ?? getRowValue(row, [
+      'P' + playerNo + 'Strokes', 'P' + playerNo + ' Strokes', 'Player' + playerNo + 'Strokes', 'Player ' + playerNo + ' Strokes', 'Player ' + playerNo + ' Strokes Received'
+    ])),
+    matchStrokes: getManualStrokeNumber(raw.matchStrokes ?? raw.manualStrokes ?? raw.strokesReceived ?? raw.StrokesReceived),
+    isSub: !!(raw.isSub || raw.sub),
+    isAbsent: !!(raw.isAbsent || raw.absent),
+    absentPlayer: raw.absentPlayer || raw.AbsentPlayer || ''
   };
 }
 
@@ -1689,6 +1724,10 @@ function applyScheduledMatch() {
     if (ghinEl && p && p.ghin) ghinEl.value = p.ghin;
   });
 
+  // Strokes Received are copied from Squabbit each week/match, so clear
+  // them when a new scheduled matchup is selected.
+  clearManualStrokeFields();
+
   renderScorecard();
 }
 
@@ -1809,12 +1848,16 @@ async function loadSelectedResultForEdit() {
       if (p.isSub) {
         const subNameEl = document.getElementById(id+'-sub-name');
         const subGhinEl = document.getElementById(id+'-sub-ghin');
+        const subStrokesEl = document.getElementById(id+'-sub-strokes');
         if (subNameEl) subNameEl.value = p.name || '';
         if (subGhinEl) subGhinEl.value = p.ghin || '';
+        if (subStrokesEl) subStrokesEl.value = getManualStrokeNumber(p.manualStrokes ?? p.matchStrokes ?? p.strokesReceived) ?? '';
       }
     } else {
       document.getElementById(id+'-name').value = p.name || '';
       document.getElementById(id+'-ghin').value = p.ghin || '';
+      const strokesEl = document.getElementById(id+'-strokes');
+      if (strokesEl) strokesEl.value = getManualStrokeNumber(p.manualStrokes ?? p.matchStrokes ?? p.strokesReceived) ?? '';
     }
   });
   scorecardScores = {...(r.scoreSnapshot || {})};
@@ -1832,20 +1875,27 @@ function onAbsentChange(slot) {
   const subFields = document.getElementById(slot + '-sub-fields');
   const nameInput = document.getElementById(slot + '-name');
   const ghinInput = document.getElementById(slot + '-ghin');
+  const strokeInput = document.getElementById(slot + '-strokes');
   if (absent) {
     subFields.style.display = 'flex';
     nameInput.disabled = true;
     ghinInput.disabled = true;
+    if (strokeInput) strokeInput.disabled = true;
     nameInput.style.opacity = '0.4';
     ghinInput.style.opacity = '0.4';
+    if (strokeInput) strokeInput.style.opacity = '0.4';
   } else {
     subFields.style.display = 'none';
     nameInput.disabled = false;
     ghinInput.disabled = false;
+    if (strokeInput) strokeInput.disabled = false;
     nameInput.style.opacity = '';
     ghinInput.style.opacity = '';
+    if (strokeInput) strokeInput.style.opacity = '';
     document.getElementById(slot + '-sub-name').value = '';
     document.getElementById(slot + '-sub-ghin').value = '';
+    const subStroke = document.getElementById(slot + '-sub-strokes');
+    if (subStroke) subStroke.value = '';
   }
   renderScorecard();
 }
@@ -1863,6 +1913,29 @@ function resetAbsentUI() {
   });
 }
 
+
+function getManualStrokeInputValue(id, useSub) {
+  const inputId = useSub ? id + '-sub-strokes' : id + '-strokes';
+  const el = document.getElementById(inputId);
+  return el ? getManualStrokeNumber(el.value) : null;
+}
+
+function clearManualStrokeFields() {
+  ['p1a','p1b','p2a','p2b'].forEach(id => {
+    const el = document.getElementById(id + '-strokes');
+    if (el) el.value = '';
+    const subEl = document.getElementById(id + '-sub-strokes');
+    if (subEl) subEl.value = '';
+  });
+}
+
+function validateManualStrokesBeforeSave(players) {
+  const missing = (players || []).filter(p => playerIsActiveForStrokes(p) && getManualStrokeNumber(p.manualStrokes) === null);
+  if (!missing.length) return true;
+  alert('Please enter Strokes Received from Squabbit for: ' + missing.map(p => p.name).join(', ') + '.');
+  return false;
+}
+
 // ── SCORECARD CORE ──
 function getPlayers() {
   function buildSlot(id, defaultName, team) {
@@ -1870,18 +1943,23 @@ function getPlayers() {
     if (absent) {
       const subName = (document.getElementById(id + '-sub-name') || {}).value || '';
       const subGhin = (document.getElementById(id + '-sub-ghin') || {}).value || '';
+      const subStrokes = getManualStrokeInputValue(id, true);
       if (subName.trim()) {
-        return {id, name: subName.trim(), ghin: subGhin, team, isSub: true, absentPlayer: document.getElementById(id + '-name').value || ''};
+        return {id, name: subName.trim(), ghin: subGhin, team, manualStrokes: subStrokes, matchStrokes: subStrokes, isSub: true, absentPlayer: document.getElementById(id + '-name').value || ''};
       }
-      return {id, name: document.getElementById(id + '-name').value || defaultName, ghin: '', team, isAbsent: true, absentPlayer: document.getElementById(id + '-name').value || defaultName};
+      return {id, name: document.getElementById(id + '-name').value || defaultName, ghin: '', team, manualStrokes: null, matchStrokes: null, isAbsent: true, absentPlayer: document.getElementById(id + '-name').value || defaultName};
     }
-    return {id, name: document.getElementById(id + '-name').value || defaultName, ghin: document.getElementById(id + '-ghin').value, team};
+    const strokes = getManualStrokeInputValue(id, false);
+    return {id, name: document.getElementById(id + '-name').value || defaultName, ghin: document.getElementById(id + '-ghin').value, team, manualStrokes: strokes, matchStrokes: strokes};
   }
 
+  const p1aStrokes = getManualStrokeInputValue('p1a', false);
+  const p2aStrokes = getManualStrokeInputValue('p2a', false);
+
   return [
-    {id:'p1a', name:document.getElementById('p1a-name').value||'Player 1A', ghin:document.getElementById('p1a-ghin').value, team:1},
+    {id:'p1a', name:document.getElementById('p1a-name').value||'Player 1A', ghin:document.getElementById('p1a-ghin').value, team:1, manualStrokes:p1aStrokes, matchStrokes:p1aStrokes},
     buildSlot('p1b', 'Player 1B', 1),
-    {id:'p2a', name:document.getElementById('p2a-name').value||'Player 2A', ghin:document.getElementById('p2a-ghin').value, team:2},
+    {id:'p2a', name:document.getElementById('p2a-name').value||'Player 2A', ghin:document.getElementById('p2a-ghin').value, team:2, manualStrokes:p2aStrokes, matchStrokes:p2aStrokes},
     buildSlot('p2b', 'Player 2B', 2),
   ];
 }
@@ -1943,9 +2021,10 @@ function countTeamGrossPars(players, indexes, holes) {
   }, 0);
 }
 
+
 function getActualNetStrokeSetsForTiebreaker(players, holes) {
-  // Match play hole winners use the manually entered relative Squabbit strokes.
-  // Tiebreakers use each player's actual net score, matching Squabbit's Net tab.
+  // Match play hole winners use the manually entered Squabbit Strokes Received.
+  // Match tiebreakers use each player's ACTUAL net-score strokes, matching Squabbit's Net tab.
   const side = (holes && holes.length && holes[0].hole >= 10) ? 'back' : 'front';
   const actualNetStrokes = calcPlayerStatStrokes(players, side);
   return players.map(function(p, i) {
@@ -1958,7 +2037,7 @@ function calcTieBreakerWinner(players, strokeSets, holes) {
   const t2 = [2, 3];
 
   // IMPORTANT: tiebreakers are based on ACTUAL net scores, not relative match-play strokes.
-  // Example: if Squabbit Net tab shows team totals 94 vs 89, this should use those totals.
+  // Manual Strokes Received remain the source for match-play dots/hole wins only.
   const actualNetStrokeSets = getActualNetStrokeSetsForTiebreaker(players, holes);
 
   const t1Combined = getTeamCombinedNet(players, actualNetStrokeSets, t1, holes);
@@ -2124,7 +2203,7 @@ function renderScorecard() {
   const totalPar = holes.reduce((s,h)=>s+h.par,0);
   let html = `<thead><tr>
     <th style="text-align:left;padding-left:8px">Player</th>
-    <th>Hdcp<br><span style="font-size:9px;color:rgba(107,130,153,0.7)">(9-hole)</span></th>
+    <th>Strokes<br><span style="font-size:9px;color:rgba(107,130,153,0.7)">Squabbit</span></th>
     ${holes.map(h=>`<th class="h-col">${h.hole}</th>`).join('')}
     <th>NET</th>
   </tr>
@@ -2140,7 +2219,8 @@ function renderScorecard() {
   </tr></thead><tbody>`;
 
   players.forEach((p, pi) => {
-    const ch = isNaN(parseFloat(p.ghin)) ? null : nineHoleHdcp(p.ghin, side);
+    const manualStrokeValue = getManualStrokeNumber(p.manualStrokes ?? p.matchStrokes ?? p.strokesReceived);
+    const ch = manualStrokeValue !== null ? manualStrokeValue : null;
     const ns = strokes[pi];
     const rowClass = pi < 2 ? 't1-bg' : 't2-bg';
     const divClass = pi === 2 ? ' team-divider' : '';
@@ -2166,7 +2246,7 @@ function renderScorecard() {
 
     html += `<tr class="${rowClass}${divClass}">
       <td class="pname-cell">${p.name}</td>
-      <td class="hdcp-cell">${ch !== null ? `${ch}${ns>0?` <span style="color:var(--green);font-size:10px">(+${ns})</span>`:''}`:'—'}</td>
+      <td class="hdcp-cell">${ch !== null ? ch : (ns > 0 ? `<span style="color:var(--muted);font-size:10px">calc ${ns}</span>` : '—')}</td>
       ${tds}
       <td class="net-cell">${netCount>0?netTotal:'—'}</td>
     </tr>`;
@@ -2308,6 +2388,7 @@ async function saveMatch() {
 
   const holes = getHoles();
   const players = getPlayers();
+  if(!validateManualStrokesBeforeSave(players)) return;
   const strokes = calcPlayerStrokes(players, side);
   const strokeSets = players.map((p,i) => getStrokeHoles(strokes[i], holes));
   const state = calcMatchState(players, strokeSets, holes);
@@ -2362,6 +2443,8 @@ async function saveMatch() {
       name: p.name,
       ghin: p.ghin,
       team: p.team,
+      manualStrokes: getManualStrokeNumber(p.manualStrokes ?? p.matchStrokes ?? p.strokesReceived),
+      matchStrokes: getManualStrokeNumber(p.matchStrokes ?? p.manualStrokes ?? p.strokesReceived),
       ...(p.isSub ? {isSub: true, absentPlayer: p.absentPlayer || ''} : {}),
       ...(p.isAbsent ? {isAbsent: true, absentPlayer: p.absentPlayer || ''} : {})
     })),
@@ -2398,6 +2481,8 @@ async function saveMatch() {
   ['p1a','p1b','p2a','p2b'].forEach(id => {
     document.getElementById(id+'-name').value = '';
     document.getElementById(id+'-ghin').value = '';
+    const strokesEl = document.getElementById(id+'-strokes');
+    if (strokesEl) strokesEl.value = '';
   });
   document.getElementById('sc-week').value = '';
   document.getElementById('scorecard-card').style.display = 'none';
