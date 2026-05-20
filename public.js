@@ -188,11 +188,12 @@ function calcPlayerStrokes(players, side) {
 // match-play comparison/90% allowance.
 function calcPlayerStatStrokes(players, side) {
   // Actual net-score handicap for tiebreakers, net stats, and low-net leaders.
-  // IMPORTANT: this is intentionally NOT the manual match-play strokes copied from Squabbit.
-  // Manual Strokes Received are relative match-play strokes; actual net totals use each
-  // player's own 9-hole course handicap from GHIN/course math.
+  // If Net HDCP is manually entered from Squabbit, use it exactly. Match Strokes
+  // are relative match-play strokes and should NOT drive combined-net tiebreakers.
   return players.map(p => {
     if (p.isAbsent || !p.name || !p.name.trim()) return 0;
+    const manualNet = getManualStrokeNumber(p.netStrokes ?? p.actualNetStrokes ?? p.squabbitNetStrokes ?? p.NetStrokes);
+    if (manualNet !== null) return manualNet;
     const h = nineHoleHdcp(p.ghin, side);
     return h !== null ? Math.max(0, h) : 0;
   });

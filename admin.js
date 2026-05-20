@@ -192,11 +192,12 @@ function calcPlayerStrokes(players, side) {
 // match-play comparison/90% allowance.
 function calcPlayerStatStrokes(players, side) {
   // Actual net-score handicap for tiebreakers, net stats, and low-net leaders.
-  // IMPORTANT: this is intentionally NOT the manual match-play strokes copied from Squabbit.
-  // Manual Strokes Received are relative match-play strokes; actual net totals use each
-  // player's own 9-hole course handicap from GHIN/course math.
+  // If Net HDCP is manually entered from Squabbit, use it exactly. Match Strokes
+  // are relative match-play strokes and should NOT drive combined-net tiebreakers.
   return players.map(p => {
     if (p.isAbsent || !p.name || !p.name.trim()) return 0;
+    const manualNet = getManualStrokeNumber(p.netStrokes ?? p.actualNetStrokes ?? p.squabbitNetStrokes ?? p.NetStrokes);
+    if (manualNet !== null) return manualNet;
     const h = nineHoleHdcp(p.ghin, side);
     return h !== null ? Math.max(0, h) : 0;
   });
@@ -1849,15 +1850,19 @@ async function loadSelectedResultForEdit() {
         const subNameEl = document.getElementById(id+'-sub-name');
         const subGhinEl = document.getElementById(id+'-sub-ghin');
         const subStrokesEl = document.getElementById(id+'-sub-strokes');
+        const subNetStrokesEl = document.getElementById(id+'-sub-net-strokes');
         if (subNameEl) subNameEl.value = p.name || '';
         if (subGhinEl) subGhinEl.value = p.ghin || '';
         if (subStrokesEl) subStrokesEl.value = getManualStrokeNumber(p.manualStrokes ?? p.matchStrokes ?? p.strokesReceived) ?? '';
+        if (subNetStrokesEl) subNetStrokesEl.value = getManualStrokeNumber(p.netStrokes ?? p.actualNetStrokes ?? p.squabbitNetStrokes) ?? '';
       }
     } else {
       document.getElementById(id+'-name').value = p.name || '';
       document.getElementById(id+'-ghin').value = p.ghin || '';
       const strokesEl = document.getElementById(id+'-strokes');
+      const netStrokesEl = document.getElementById(id+'-net-strokes');
       if (strokesEl) strokesEl.value = getManualStrokeNumber(p.manualStrokes ?? p.matchStrokes ?? p.strokesReceived) ?? '';
+      if (netStrokesEl) netStrokesEl.value = getManualStrokeNumber(p.netStrokes ?? p.actualNetStrokes ?? p.squabbitNetStrokes) ?? '';
     }
   });
   scorecardScores = {...(r.scoreSnapshot || {})};
@@ -1876,26 +1881,33 @@ function onAbsentChange(slot) {
   const nameInput = document.getElementById(slot + '-name');
   const ghinInput = document.getElementById(slot + '-ghin');
   const strokeInput = document.getElementById(slot + '-strokes');
+  const netStrokeInput = document.getElementById(slot + '-net-strokes');
   if (absent) {
     subFields.style.display = 'flex';
     nameInput.disabled = true;
     ghinInput.disabled = true;
     if (strokeInput) strokeInput.disabled = true;
+    if (netStrokeInput) netStrokeInput.disabled = true;
     nameInput.style.opacity = '0.4';
     ghinInput.style.opacity = '0.4';
     if (strokeInput) strokeInput.style.opacity = '0.4';
+    if (netStrokeInput) netStrokeInput.style.opacity = '0.4';
   } else {
     subFields.style.display = 'none';
     nameInput.disabled = false;
     ghinInput.disabled = false;
     if (strokeInput) strokeInput.disabled = false;
+    if (netStrokeInput) netStrokeInput.disabled = false;
     nameInput.style.opacity = '';
     ghinInput.style.opacity = '';
     if (strokeInput) strokeInput.style.opacity = '';
+    if (netStrokeInput) netStrokeInput.style.opacity = '';
     document.getElementById(slot + '-sub-name').value = '';
     document.getElementById(slot + '-sub-ghin').value = '';
     const subStroke = document.getElementById(slot + '-sub-strokes');
+    const subNetStroke = document.getElementById(slot + '-sub-net-strokes');
     if (subStroke) subStroke.value = '';
+    if (subNetStroke) subNetStroke.value = '';
   }
   renderScorecard();
 }
@@ -1920,19 +1932,36 @@ function getManualStrokeInputValue(id, useSub) {
   return el ? getManualStrokeNumber(el.value) : null;
 }
 
+function getNetStrokeInputValue(id, useSub) {
+  const inputId = useSub ? id + '-sub-net-strokes' : id + '-net-strokes';
+  const el = document.getElementById(inputId);
+  return el ? getManualStrokeNumber(el.value) : null;
+}
+
 function clearManualStrokeFields() {
   ['p1a','p1b','p2a','p2b'].forEach(id => {
     const el = document.getElementById(id + '-strokes');
     if (el) el.value = '';
     const subEl = document.getElementById(id + '-sub-strokes');
+    const netEl = document.getElementById(id + '-net-strokes');
+    const subNetEl = document.getElementById(id + '-sub-net-strokes');
     if (subEl) subEl.value = '';
+    if (netEl) netEl.value = '';
+    if (subNetEl) subNetEl.value = '';
   });
 }
 
 function validateManualStrokesBeforeSave(players) {
   const missing = (players || []).filter(p => playerIsActiveForStrokes(p) && getManualStrokeNumber(p.manualStrokes) === null);
   if (!missing.length) return true;
-  alert('Please enter Strokes Received from Squabbit for: ' + missing.map(p => p.name).join(', ') + '.');
+  alert('Please enter Match Strokes from Squabbit for: ' + missing.map(p => p.name).join(', ') + '.');
+  return false;
+}
+
+function validateNetStrokesBeforeSave(players) {
+  const missing = (players || []).filter(p => playerIsActiveForStrokes(p) && getManualStrokeNumber(p.netStrokes) === null);
+  if (!missing.length) return true;
+  alert('Please enter Net HDCP from Squabbit for: ' + missing.map(p => p.name).join(', ') + '. This is required so combined-net tiebreakers match Squabbit.');
   return false;
 }
 
@@ -1944,22 +1973,26 @@ function getPlayers() {
       const subName = (document.getElementById(id + '-sub-name') || {}).value || '';
       const subGhin = (document.getElementById(id + '-sub-ghin') || {}).value || '';
       const subStrokes = getManualStrokeInputValue(id, true);
+      const subNetStrokes = getNetStrokeInputValue(id, true);
       if (subName.trim()) {
-        return {id, name: subName.trim(), ghin: subGhin, team, manualStrokes: subStrokes, matchStrokes: subStrokes, isSub: true, absentPlayer: document.getElementById(id + '-name').value || ''};
+        return {id, name: subName.trim(), ghin: subGhin, team, manualStrokes: subStrokes, matchStrokes: subStrokes, netStrokes: subNetStrokes, actualNetStrokes: subNetStrokes, isSub: true, absentPlayer: document.getElementById(id + '-name').value || ''};
       }
-      return {id, name: document.getElementById(id + '-name').value || defaultName, ghin: '', team, manualStrokes: null, matchStrokes: null, isAbsent: true, absentPlayer: document.getElementById(id + '-name').value || defaultName};
+      return {id, name: document.getElementById(id + '-name').value || defaultName, ghin: '', team, manualStrokes: null, matchStrokes: null, netStrokes: null, actualNetStrokes: null, isAbsent: true, absentPlayer: document.getElementById(id + '-name').value || defaultName};
     }
     const strokes = getManualStrokeInputValue(id, false);
-    return {id, name: document.getElementById(id + '-name').value || defaultName, ghin: document.getElementById(id + '-ghin').value, team, manualStrokes: strokes, matchStrokes: strokes};
+    const netStrokes = getNetStrokeInputValue(id, false);
+    return {id, name: document.getElementById(id + '-name').value || defaultName, ghin: document.getElementById(id + '-ghin').value, team, manualStrokes: strokes, matchStrokes: strokes, netStrokes, actualNetStrokes: netStrokes};
   }
 
   const p1aStrokes = getManualStrokeInputValue('p1a', false);
   const p2aStrokes = getManualStrokeInputValue('p2a', false);
+  const p1aNetStrokes = getNetStrokeInputValue('p1a', false);
+  const p2aNetStrokes = getNetStrokeInputValue('p2a', false);
 
   return [
-    {id:'p1a', name:document.getElementById('p1a-name').value||'Player 1A', ghin:document.getElementById('p1a-ghin').value, team:1, manualStrokes:p1aStrokes, matchStrokes:p1aStrokes},
+    {id:'p1a', name:document.getElementById('p1a-name').value||'Player 1A', ghin:document.getElementById('p1a-ghin').value, team:1, manualStrokes:p1aStrokes, matchStrokes:p1aStrokes, netStrokes:p1aNetStrokes, actualNetStrokes:p1aNetStrokes},
     buildSlot('p1b', 'Player 1B', 1),
-    {id:'p2a', name:document.getElementById('p2a-name').value||'Player 2A', ghin:document.getElementById('p2a-ghin').value, team:2, manualStrokes:p2aStrokes, matchStrokes:p2aStrokes},
+    {id:'p2a', name:document.getElementById('p2a-name').value||'Player 2A', ghin:document.getElementById('p2a-ghin').value, team:2, manualStrokes:p2aStrokes, matchStrokes:p2aStrokes, netStrokes:p2aNetStrokes, actualNetStrokes:p2aNetStrokes},
     buildSlot('p2b', 'Player 2B', 2),
   ];
 }
@@ -2389,6 +2422,7 @@ async function saveMatch() {
   const holes = getHoles();
   const players = getPlayers();
   if(!validateManualStrokesBeforeSave(players)) return;
+  if(!validateNetStrokesBeforeSave(players)) return;
   const strokes = calcPlayerStrokes(players, side);
   const strokeSets = players.map((p,i) => getStrokeHoles(strokes[i], holes));
   const state = calcMatchState(players, strokeSets, holes);
@@ -2445,6 +2479,8 @@ async function saveMatch() {
       team: p.team,
       manualStrokes: getManualStrokeNumber(p.manualStrokes ?? p.matchStrokes ?? p.strokesReceived),
       matchStrokes: getManualStrokeNumber(p.matchStrokes ?? p.manualStrokes ?? p.strokesReceived),
+      netStrokes: getManualStrokeNumber(p.netStrokes ?? p.actualNetStrokes ?? p.squabbitNetStrokes),
+      actualNetStrokes: getManualStrokeNumber(p.actualNetStrokes ?? p.netStrokes ?? p.squabbitNetStrokes),
       ...(p.isSub ? {isSub: true, absentPlayer: p.absentPlayer || ''} : {}),
       ...(p.isAbsent ? {isAbsent: true, absentPlayer: p.absentPlayer || ''} : {})
     })),
