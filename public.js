@@ -134,22 +134,6 @@ function roundHandicapAllowance(value) {
   return Math.round((Number(value) || 0) + 1e-9);
 }
 
-
-function getManualStrokeNumber(value) {
-  if (value === undefined || value === null || value === '') return null;
-  const n = parseInt(value, 10);
-  return Number.isFinite(n) && n >= 0 ? n : null;
-}
-
-function playerIsActiveForStrokes(player) {
-  return !!(player && !player.isAbsent && String(player.name || '').trim());
-}
-
-function allActivePlayersHaveManualStrokes(players) {
-  const active = (players || []).filter(playerIsActiveForStrokes);
-  return active.length > 0 && active.every(p => getManualStrokeNumber(p.manualStrokes ?? p.matchStrokes ?? p.strokesReceived) !== null);
-}
-
 function nineHoleHdcp(ghinIndex, side) {
   const full18Rounded = courseHandicap18Rounded(ghinIndex);
   if (full18Rounded === null) return null;
@@ -166,26 +150,21 @@ function nineHoleHdcpRaw(ghinIndex) {
 // Relative match-play strokes only.
 // Individual stat/net totals use calcPlayerStatStrokes() below instead.
 function calcPlayerStrokes(players, side) {
-  // Match-play dots/hole wins should use ONLY the weekly Squabbit Match Strokes entered by the commissioner.
-  // Do not calculate fallback strokes from GHIN here; blank manual fields should show no strokes until entered.
-  return (players || []).map(function(p) {
-    if (!playerIsActiveForStrokes(p)) return 0;
-    var n = getManualStrokeNumber(p.manualStrokes ?? p.matchStrokes ?? p.strokesReceived);
-    return n === null ? 0 : n;
+  const hdcps = players.map(p => {
+    if (p.isAbsent || !p.name || !p.name.trim()) return null;
+    return nineHoleHdcp(p.ghin, side);
   });
+  const validHdcps = hdcps.filter(h => h !== null);
+  const minHdcp = validHdcps.length ? Math.min(...validHdcps) : 0;
+  return hdcps.map(h => h !== null ? Math.max(0, roundHandicapAllowance((h - minHdcp) * 0.9)) : 0);
 }
 
 // Individual net-stat handicap for player stat cards / low-net leaders.
 // This uses the player's own 9-hole GHIN-style handicap before any relative
 // match-play comparison/90% allowance.
 function calcPlayerStatStrokes(players, side) {
-  // Actual net-score handicap for tiebreakers, net stats, and low-net leaders.
-  // If Net HDCP is manually entered from Squabbit, use it exactly. Match Strokes
-  // are relative match-play strokes and should NOT drive combined-net tiebreakers.
   return players.map(p => {
     if (p.isAbsent || !p.name || !p.name.trim()) return 0;
-    const manualNet = getManualStrokeNumber(p.netStrokes ?? p.actualNetStrokes ?? p.squabbitNetStrokes ?? p.NetStrokes);
-    if (manualNet !== null) return manualNet;
     const h = nineHoleHdcp(p.ghin, side);
     return h !== null ? Math.max(0, h) : 0;
   });
@@ -413,14 +392,7 @@ function normalizeSnapshotPlayer(raw, index, row) {
     ]),
     team: normalizeTeamName(raw.team || raw.Team || getRowValue(row, [
       'P' + playerNo + 'Team', 'P' + playerNo + ' Team', 'Player' + playerNo + 'Team', 'Player ' + playerNo + ' Team'
-    ]) || sideTeam),
-    manualStrokes: getManualStrokeNumber(raw.manualStrokes ?? raw.matchStrokes ?? raw.strokesReceived ?? raw.StrokesReceived ?? getRowValue(row, [
-      'P' + playerNo + 'Strokes', 'P' + playerNo + ' Strokes', 'Player' + playerNo + 'Strokes', 'Player ' + playerNo + ' Strokes', 'Player ' + playerNo + ' Strokes Received'
-    ])),
-    matchStrokes: getManualStrokeNumber(raw.matchStrokes ?? raw.manualStrokes ?? raw.strokesReceived ?? raw.StrokesReceived),
-    isSub: !!(raw.isSub || raw.sub),
-    isAbsent: !!(raw.isAbsent || raw.absent),
-    absentPlayer: raw.absentPlayer || raw.AbsentPlayer || ''
+    ]) || sideTeam)
   };
 }
 
@@ -1947,27 +1919,11 @@ function countTeamGrossPars(players, indexes, holes) {
   }, 0);
 }
 
-
-function getActualNetStrokeSetsForTiebreaker(players, holes) {
-  // Match play hole winners use the manually entered Squabbit Strokes Received.
-  // Match tiebreakers use each player's ACTUAL net-score strokes, matching Squabbit's Net tab.
-  const side = (holes && holes.length && holes[0].hole >= 10) ? 'back' : 'front';
-  const actualNetStrokes = calcPlayerStatStrokes(players, side);
-  return players.map(function(p, i) {
-    return getStrokeHoles(actualNetStrokes[i] || 0, holes);
-  });
-}
-
 function calcTieBreakerWinner(players, strokeSets, holes) {
   const t1 = [0, 1];
   const t2 = [2, 3];
-
-  // IMPORTANT: tiebreakers are based on ACTUAL net scores, not relative match-play strokes.
-  // Manual Strokes Received remain the source for match-play dots/hole wins only.
-  const actualNetStrokeSets = getActualNetStrokeSetsForTiebreaker(players, holes);
-
-  const t1Combined = getTeamCombinedNet(players, actualNetStrokeSets, t1, holes);
-  const t2Combined = getTeamCombinedNet(players, actualNetStrokeSets, t2, holes);
+  const t1Combined = getTeamCombinedNet(players, strokeSets, t1, holes);
+  const t2Combined = getTeamCombinedNet(players, strokeSets, t2, holes);
 
   if (t1Combined !== null && t2Combined !== null && t1Combined !== t2Combined) {
     return {
@@ -1979,24 +1935,24 @@ function calcTieBreakerWinner(players, strokeSets, holes) {
 
   const hardest = [...holes].sort((a, b) => a.hcp - b.hcp);
   for (const h of hardest) {
-    const t1Best = getTeamBestNet(players, actualNetStrokeSets, t1, h);
-    const t2Best = getTeamBestNet(players, actualNetStrokeSets, t2, h);
+    const t1Best = getTeamBestNet(players, strokeSets, t1, h);
+    const t2Best = getTeamBestNet(players, strokeSets, t2, h);
     if (t1Best !== null && t2Best !== null && t1Best !== t2Best) {
       return {
         winner: t1Best < t2Best ? 0 : 1,
         label: 'TB · Hardest Hole',
-        detail: `Hardest-hole actual net tiebreaker on hole ${h.hole}`
+        detail: `Hardest-hole tiebreaker on hole ${h.hole}`
       };
     }
   }
 
-  const t1Birdies = countTeamNetBirdies(players, actualNetStrokeSets, t1, holes);
-  const t2Birdies = countTeamNetBirdies(players, actualNetStrokeSets, t2, holes);
+  const t1Birdies = countTeamNetBirdies(players, strokeSets, t1, holes);
+  const t2Birdies = countTeamNetBirdies(players, strokeSets, t2, holes);
   if (t1Birdies !== t2Birdies) {
     return {
       winner: t1Birdies > t2Birdies ? 0 : 1,
       label: 'TB · Net Birdies',
-      detail: `Actual net birdies ${t1Birdies}-${t2Birdies}`
+      detail: `Net birdies ${t1Birdies}-${t2Birdies}`
     };
   }
 
@@ -3048,4 +3004,228 @@ function buildExtras() {
     html += '</div>';
   }
   container.innerHTML = html;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   HGGL v4.9.24 stability patch
+   - True JSONP Google Sheets sync for mobile/desktop consistency
+   - Recalculates records/holes won from Results after every data pull
+   - Fixes cached-browser standings showing 0-0 after results exist
+   - Broadens Skins/CTP data mapping
+   ───────────────────────────────────────────────────────────────────────────── */
+
+function hgglNormalizeTeamKey_(name) {
+  return normalizeTeamName(String(name || '').trim());
+}
+
+function hgglCurrentTeamBase_() {
+  var current = (Array.isArray(TEAMS) && TEAMS.length ? TEAMS : DEFAULT_TEAMS);
+  return current.map(function(t) {
+    return Object.assign({}, t, {
+      name: hgglNormalizeTeamKey_(t.name),
+      w: 0,
+      l: 0,
+      holesWon: 0,
+      holesLost: 0,
+      holeDiff: 0,
+      matches: 0
+    });
+  });
+}
+
+function recalcRecordsFromResults() {
+  var base = hgglCurrentTeamBase_();
+  var byName = {};
+  base.forEach(function(t) { byName[hgglNormalizeTeamKey_(t.name)] = t; });
+
+  (Array.isArray(RESULTS) ? RESULTS : []).forEach(function(r) {
+    var team1 = hgglNormalizeTeamKey_(r.team1 || r.Team1 || r['Team 1']);
+    var team2 = hgglNormalizeTeamKey_(r.team2 || r.Team2 || r['Team 2']);
+    var winner = hgglNormalizeTeamKey_(r.winner || r.Winner);
+    if (!team1 || !team2) return;
+
+    if (!byName[team1]) byName[team1] = { name: team1, players: '', w:0, l:0, holesWon:0, holesLost:0, holeDiff:0, matches:0 };
+    if (!byName[team2]) byName[team2] = { name: team2, players: '', w:0, l:0, holesWon:0, holesLost:0, holeDiff:0, matches:0 };
+
+    var t1 = byName[team1];
+    var t2 = byName[team2];
+    var t1Holes = Number(r.team1HolesWon || (r.holesWon && r.holesWon.team1) || r['Team 1 Holes Won'] || r.Team1HolesWon || 0) || 0;
+    var t2Holes = Number(r.team2HolesWon || (r.holesWon && r.holesWon.team2) || r['Team 2 Holes Won'] || r.Team2HolesWon || 0) || 0;
+
+    t1.matches = (Number(t1.matches) || 0) + 1;
+    t2.matches = (Number(t2.matches) || 0) + 1;
+    t1.holesWon = (Number(t1.holesWon) || 0) + t1Holes;
+    t1.holesLost = (Number(t1.holesLost) || 0) + t2Holes;
+    t2.holesWon = (Number(t2.holesWon) || 0) + t2Holes;
+    t2.holesLost = (Number(t2.holesLost) || 0) + t1Holes;
+
+    if (winner && winner === team1) { t1.w = (Number(t1.w) || 0) + 1; t2.l = (Number(t2.l) || 0) + 1; }
+    else if (winner && winner === team2) { t2.w = (Number(t2.w) || 0) + 1; t1.l = (Number(t1.l) || 0) + 1; }
+    else { t1.w = (Number(t1.w) || 0) + 0.5; t2.w = (Number(t2.w) || 0) + 0.5; }
+  });
+
+  TEAMS = Object.values(byName).map(function(t) {
+    t.holeDiff = (Number(t.holesWon) || 0) - (Number(t.holesLost) || 0);
+    return t;
+  });
+}
+
+function loadState() {
+  try {
+    var raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    var parsed = JSON.parse(raw);
+    if (Array.isArray(parsed.results)) RESULTS = parsed.results;
+    if (Array.isArray(parsed.teams)) {
+      TEAMS = DEFAULT_TEAMS.map(function(def) {
+        var cached = parsed.teams.find(function(t) { return hgglNormalizeTeamKey_(t.name) === hgglNormalizeTeamKey_(def.name); }) || {};
+        return Object.assign({}, def, cached, { name: hgglNormalizeTeamKey_(cached.name || def.name) });
+      });
+    }
+    recalcRecordsFromResults();
+    if (parsed.savedAt) {
+      try {
+        LEAGUE_DATA_SOURCE = 'Cached Browser Copy';
+        LEAGUE_DATA_LAST_LOADED = new Date(parsed.savedAt).toLocaleString('en-US', { timeZone: 'America/New_York' });
+      } catch(e) { LEAGUE_DATA_LAST_LOADED = String(parsed.savedAt); }
+    }
+    if (typeof parsed.commissionerNote === 'string' && parsed.commissionerNote.trim()) {
+      localStorage.setItem('hggl2026_commissioner_note', parsed.commissionerNote);
+    }
+  } catch (err) {
+    console.warn('League data could not be loaded.', err);
+  }
+}
+
+function hgglRowsFromData_(data, keys) {
+  for (var i = 0; i < keys.length; i++) {
+    var v = data && data[keys[i]];
+    if (Array.isArray(v)) return v;
+  }
+  return [];
+}
+
+function applySkinsCtpFromSheet(data) {
+  var skins = hgglRowsFromData_(data || {}, ['skins','Skins','netSkins','NetSkins','net_skins']);
+  var ctp = hgglRowsFromData_(data || {}, ['ctp','CTP','closestToPin','ClosestToPin','closest_to_pin']);
+  var combined = hgglRowsFromData_(data || {}, ['extras','Extras','skinsCtp','SkinsCTP','skinsAndCtp','SkinsAndCTP']);
+
+  if (combined.length) {
+    combined.forEach(function(r) {
+      var type = String(r.Type || r.Category || r.Event || r._type || '').toLowerCase();
+      if (type.indexOf('ctp') >= 0 || type.indexOf('closest') >= 0) ctp.push(r);
+      else if (type.indexOf('skin') >= 0 || r.Skins || r.TotalPot) skins.push(r);
+    });
+  }
+
+  SKINS_DATA = skins.filter(function(r) { return r && (r.Week || r.week) && (r.Player || r.player); })
+    .map(function(r) { return Object.assign({}, r, { Week: r.Week || r.week, Player: r.Player || r.player }); });
+  CTP_DATA = ctp.filter(function(r) { return r && (r.Week || r.week) && (r.Player || r.player); })
+    .map(function(r) { return Object.assign({}, r, { Week: r.Week || r.week, Player: r.Player || r.player }); });
+}
+
+function applyLeagueDataFromSheet(data) {
+  LEAGUE_API_DATA = data || {};
+  TEAMS = buildTeamsFromSheet(LEAGUE_API_DATA);
+
+  if (LEAGUE_API_DATA.schedule && LEAGUE_API_DATA.schedule.length) {
+    var builtWeeks = buildScheduleFromSheet(LEAGUE_API_DATA);
+    if (builtWeeks && builtWeeks.length) SCHEDULE_WEEKS = builtWeeks;
+  }
+
+  RESULTS = (LEAGUE_API_DATA.results || [])
+    .map(normalizeResultFromSheet)
+    .filter(function(r) { return r.week && r.team1 && r.team2; });
+
+  // Critical: public standings/power rankings should be driven by Results, not a stale Standings sheet.
+  recalcRecordsFromResults();
+
+  if (LEAGUE_API_DATA.commissionerNote !== undefined && LEAGUE_API_DATA.commissionerNote !== null) {
+    localStorage.setItem('hggl2026_commissioner_note', String(LEAGUE_API_DATA.commissionerNote));
+  }
+
+  applySkinsCtpFromSheet(LEAGUE_API_DATA);
+  if (typeof applyAttendanceFromSheet === 'function') applyAttendanceFromSheet(LEAGUE_API_DATA);
+  if (typeof applyHandicapFromSheet === 'function') applyHandicapFromSheet(LEAGUE_API_DATA);
+
+  LEAGUE_DATA_SOURCE = 'Google Sheets';
+  LEAGUE_DATA_LAST_LOADED = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
+
+  function refreshExtraCards() {
+    if (typeof applyAttendanceFromSheet === 'function') applyAttendanceFromSheet(LEAGUE_API_DATA);
+    if (typeof applyHandicapFromSheet === 'function') applyHandicapFromSheet(LEAGUE_API_DATA);
+    var attCard = document.getElementById('bar-attendance-card');
+    if (attCard && typeof buildAttendanceCardHTML === 'function') {
+      attCard.innerHTML = '<div class="dash-label">🍺 Bar Attendance</div>' + buildAttendanceCardHTML();
+    }
+    var hcpCard = document.getElementById('handicap-tracker-card');
+    if (hcpCard && typeof buildHandicapCardHTML === 'function') {
+      hcpCard.innerHTML = '<div class="dash-label">📊 Handicap Tracker</div>' + buildHandicapCardHTML();
+    }
+  }
+  refreshExtraCards();
+  setTimeout(refreshExtraCards, 800);
+}
+
+async function leagueJsonpRequest(action, payload) {
+  payload = payload || {};
+  if (!LEAGUE_API_URL) throw new Error('Missing Google Sheets API URL.');
+
+  return new Promise(function(resolve, reject) {
+    var callbackName = 'hgglJsonp_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
+    var script = document.createElement('script');
+    var finished = false;
+
+    function cleanup() {
+      if (finished) return;
+      finished = true;
+      try { delete window[callbackName]; } catch(e) { window[callbackName] = undefined; }
+      if (script && script.parentNode) script.parentNode.removeChild(script);
+    }
+
+    var timer = setTimeout(function() {
+      cleanup();
+      reject(new Error('Request timed out.'));
+    }, 25000);
+
+    window[callbackName] = function(json) {
+      clearTimeout(timer);
+      cleanup();
+      if (!json || json.ok === false) reject(new Error((json && json.error) || 'API error'));
+      else resolve(json);
+    };
+
+    script.onerror = function() {
+      clearTimeout(timer);
+      cleanup();
+      reject(new Error('Google Sheets script failed to load.'));
+    };
+
+    var params = new URLSearchParams();
+    params.set('action', action);
+    params.set('callback', callbackName);
+    params.set('v', String(Date.now()));
+    if (payload && Object.keys(payload).length) params.set('payload', JSON.stringify(payload));
+    script.src = LEAGUE_API_URL + '?' + params.toString();
+    document.body.appendChild(script);
+  });
+}
+
+
+function fetchLeagueDataFromSheets(silent) {
+  silent = !!silent;
+  if (!USE_GOOGLE_SHEETS_SYNC || !LEAGUE_API_URL) return Promise.resolve(false);
+  return leagueJsonpRequest('getLeagueData').then(function(json) {
+    applyLeagueDataFromSheet(json.data || {});
+    persistState();
+    rebuildAll();
+    if (typeof initCommissionerNoteEditor === 'function') initCommissionerNoteEditor();
+    return true;
+  }).catch(function(err) {
+    console.warn('Google Sheets sync failed; using local fallback.', err);
+    LEAGUE_DATA_SOURCE = 'local fallback';
+    if (!silent) alert('Could not load Google Sheets data. The site is using the local backup for now.');
+    return false;
+  });
 }

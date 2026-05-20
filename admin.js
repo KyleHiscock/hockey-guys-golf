@@ -100,7 +100,7 @@ let RESULTS = [];
 var SKINS_DATA = [];
 var CTP_DATA = [];
 const STORAGE_KEY = 'hggl_2026_state_v2';
-const HGL_FRONTEND_VERSION = 'v4.9.17-commissioner-control';
+const HGL_FRONTEND_VERSION = 'v4.9.24-dashboard-standings-extras-fix';
 try { console.log('Hockey Guys Golf League frontend ' + HGL_FRONTEND_VERSION); } catch(e) {}
 let currentUser = null;
 let scorecardScores = {};
@@ -138,22 +138,6 @@ function roundHandicapAllowance(value) {
   return Math.round((Number(value) || 0) + 1e-9);
 }
 
-
-function getManualStrokeNumber(value) {
-  if (value === undefined || value === null || value === '') return null;
-  const n = parseInt(value, 10);
-  return Number.isFinite(n) && n >= 0 ? n : null;
-}
-
-function playerIsActiveForStrokes(player) {
-  return !!(player && !player.isAbsent && String(player.name || '').trim());
-}
-
-function allActivePlayersHaveManualStrokes(players) {
-  const active = (players || []).filter(playerIsActiveForStrokes);
-  return active.length > 0 && active.every(p => getManualStrokeNumber(p.manualStrokes ?? p.matchStrokes ?? p.strokesReceived) !== null);
-}
-
 function nineHoleHdcp(ghinIndex, side) {
   const full18Rounded = courseHandicap18Rounded(ghinIndex);
   if (full18Rounded === null) return null;
@@ -170,26 +154,21 @@ function nineHoleHdcpRaw(ghinIndex) {
 // Relative match-play strokes only.
 // Individual stat/net totals use calcPlayerStatStrokes() below instead.
 function calcPlayerStrokes(players, side) {
-  // Match-play dots/hole wins should use ONLY the weekly Squabbit Match Strokes entered by the commissioner.
-  // Do not calculate fallback strokes from GHIN here; blank manual fields should show no strokes until entered.
-  return (players || []).map(function(p) {
-    if (!playerIsActiveForStrokes(p)) return 0;
-    var n = getManualStrokeNumber(p.manualStrokes ?? p.matchStrokes ?? p.strokesReceived);
-    return n === null ? 0 : n;
+  const hdcps = players.map(p => {
+    if (p.isAbsent || !p.name || !p.name.trim()) return null;
+    return nineHoleHdcp(p.ghin, side);
   });
+  const validHdcps = hdcps.filter(h => h !== null);
+  const minHdcp = validHdcps.length ? Math.min(...validHdcps) : 0;
+  return hdcps.map(h => h !== null ? Math.max(0, roundHandicapAllowance((h - minHdcp) * 0.9)) : 0);
 }
 
 // Individual net-stat handicap for player stat cards / low-net leaders.
 // This uses the player's own 9-hole GHIN-style handicap before any relative
 // match-play comparison/90% allowance.
 function calcPlayerStatStrokes(players, side) {
-  // Actual net-score handicap for tiebreakers, net stats, and low-net leaders.
-  // If Net HDCP is manually entered from Squabbit, use it exactly. Match Strokes
-  // are relative match-play strokes and should NOT drive combined-net tiebreakers.
   return players.map(p => {
     if (p.isAbsent || !p.name || !p.name.trim()) return 0;
-    const manualNet = getManualStrokeNumber(p.netStrokes ?? p.actualNetStrokes ?? p.squabbitNetStrokes ?? p.NetStrokes);
-    if (manualNet !== null) return manualNet;
     const h = nineHoleHdcp(p.ghin, side);
     return h !== null ? Math.max(0, h) : 0;
   });
@@ -412,14 +391,7 @@ function normalizeSnapshotPlayer(raw, index, row) {
     ]),
     team: normalizeTeamName(raw.team || raw.Team || getRowValue(row, [
       'P' + playerNo + 'Team', 'P' + playerNo + ' Team', 'Player' + playerNo + 'Team', 'Player ' + playerNo + ' Team'
-    ]) || sideTeam),
-    manualStrokes: getManualStrokeNumber(raw.manualStrokes ?? raw.matchStrokes ?? raw.strokesReceived ?? raw.StrokesReceived ?? getRowValue(row, [
-      'P' + playerNo + 'Strokes', 'P' + playerNo + ' Strokes', 'Player' + playerNo + 'Strokes', 'Player ' + playerNo + ' Strokes', 'Player ' + playerNo + ' Strokes Received'
-    ])),
-    matchStrokes: getManualStrokeNumber(raw.matchStrokes ?? raw.manualStrokes ?? raw.strokesReceived ?? raw.StrokesReceived),
-    isSub: !!(raw.isSub || raw.sub),
-    isAbsent: !!(raw.isAbsent || raw.absent),
-    absentPlayer: raw.absentPlayer || raw.AbsentPlayer || ''
+    ]) || sideTeam)
   };
 }
 
@@ -1717,10 +1689,6 @@ function applyScheduledMatch() {
     if (ghinEl && p && p.ghin) ghinEl.value = p.ghin;
   });
 
-  // Strokes Received are copied from Squabbit each week/match, so clear
-  // them when a new scheduled matchup is selected.
-  clearManualStrokeFields();
-
   renderScorecard();
 }
 
@@ -1841,20 +1809,12 @@ async function loadSelectedResultForEdit() {
       if (p.isSub) {
         const subNameEl = document.getElementById(id+'-sub-name');
         const subGhinEl = document.getElementById(id+'-sub-ghin');
-        const subStrokesEl = document.getElementById(id+'-sub-strokes');
-        const subNetStrokesEl = document.getElementById(id+'-sub-net-strokes');
         if (subNameEl) subNameEl.value = p.name || '';
         if (subGhinEl) subGhinEl.value = p.ghin || '';
-        if (subStrokesEl) subStrokesEl.value = getManualStrokeNumber(p.manualStrokes ?? p.matchStrokes ?? p.strokesReceived) ?? '';
-        if (subNetStrokesEl) subNetStrokesEl.value = getManualStrokeNumber(p.netStrokes ?? p.actualNetStrokes ?? p.squabbitNetStrokes) ?? '';
       }
     } else {
       document.getElementById(id+'-name').value = p.name || '';
       document.getElementById(id+'-ghin').value = p.ghin || '';
-      const strokesEl = document.getElementById(id+'-strokes');
-      const netStrokesEl = document.getElementById(id+'-net-strokes');
-      if (strokesEl) strokesEl.value = getManualStrokeNumber(p.manualStrokes ?? p.matchStrokes ?? p.strokesReceived) ?? '';
-      if (netStrokesEl) netStrokesEl.value = getManualStrokeNumber(p.netStrokes ?? p.actualNetStrokes ?? p.squabbitNetStrokes) ?? '';
     }
   });
   scorecardScores = {...(r.scoreSnapshot || {})};
@@ -1872,34 +1832,20 @@ function onAbsentChange(slot) {
   const subFields = document.getElementById(slot + '-sub-fields');
   const nameInput = document.getElementById(slot + '-name');
   const ghinInput = document.getElementById(slot + '-ghin');
-  const strokeInput = document.getElementById(slot + '-strokes');
-  const netStrokeInput = document.getElementById(slot + '-net-strokes');
   if (absent) {
     subFields.style.display = 'flex';
     nameInput.disabled = true;
     ghinInput.disabled = true;
-    if (strokeInput) strokeInput.disabled = true;
-    if (netStrokeInput) netStrokeInput.disabled = true;
     nameInput.style.opacity = '0.4';
     ghinInput.style.opacity = '0.4';
-    if (strokeInput) strokeInput.style.opacity = '0.4';
-    if (netStrokeInput) netStrokeInput.style.opacity = '0.4';
   } else {
     subFields.style.display = 'none';
     nameInput.disabled = false;
     ghinInput.disabled = false;
-    if (strokeInput) strokeInput.disabled = false;
-    if (netStrokeInput) netStrokeInput.disabled = false;
     nameInput.style.opacity = '';
     ghinInput.style.opacity = '';
-    if (strokeInput) strokeInput.style.opacity = '';
-    if (netStrokeInput) netStrokeInput.style.opacity = '';
     document.getElementById(slot + '-sub-name').value = '';
     document.getElementById(slot + '-sub-ghin').value = '';
-    const subStroke = document.getElementById(slot + '-sub-strokes');
-    const subNetStroke = document.getElementById(slot + '-sub-net-strokes');
-    if (subStroke) subStroke.value = '';
-    if (subNetStroke) subNetStroke.value = '';
   }
   renderScorecard();
 }
@@ -1917,46 +1863,6 @@ function resetAbsentUI() {
   });
 }
 
-
-function getManualStrokeInputValue(id, useSub) {
-  const inputId = useSub ? id + '-sub-strokes' : id + '-strokes';
-  const el = document.getElementById(inputId);
-  return el ? getManualStrokeNumber(el.value) : null;
-}
-
-function getNetStrokeInputValue(id, useSub) {
-  const inputId = useSub ? id + '-sub-net-strokes' : id + '-net-strokes';
-  const el = document.getElementById(inputId);
-  return el ? getManualStrokeNumber(el.value) : null;
-}
-
-function clearManualStrokeFields() {
-  ['p1a','p1b','p2a','p2b'].forEach(id => {
-    const el = document.getElementById(id + '-strokes');
-    if (el) el.value = '';
-    const subEl = document.getElementById(id + '-sub-strokes');
-    const netEl = document.getElementById(id + '-net-strokes');
-    const subNetEl = document.getElementById(id + '-sub-net-strokes');
-    if (subEl) subEl.value = '';
-    if (netEl) netEl.value = '';
-    if (subNetEl) subNetEl.value = '';
-  });
-}
-
-function validateManualStrokesBeforeSave(players) {
-  const missing = (players || []).filter(p => playerIsActiveForStrokes(p) && getManualStrokeNumber(p.manualStrokes) === null);
-  if (!missing.length) return true;
-  alert('Please enter Match Strokes from Squabbit for: ' + missing.map(p => p.name).join(', ') + '.');
-  return false;
-}
-
-function validateNetStrokesBeforeSave(players) {
-  const missing = (players || []).filter(p => playerIsActiveForStrokes(p) && getManualStrokeNumber(p.netStrokes) === null);
-  if (!missing.length) return true;
-  alert('Please enter Net HDCP from Squabbit for: ' + missing.map(p => p.name).join(', ') + '. This is required so combined-net tiebreakers match Squabbit.');
-  return false;
-}
-
 // ── SCORECARD CORE ──
 function getPlayers() {
   function buildSlot(id, defaultName, team) {
@@ -1964,27 +1870,18 @@ function getPlayers() {
     if (absent) {
       const subName = (document.getElementById(id + '-sub-name') || {}).value || '';
       const subGhin = (document.getElementById(id + '-sub-ghin') || {}).value || '';
-      const subStrokes = getManualStrokeInputValue(id, true);
-      const subNetStrokes = getNetStrokeInputValue(id, true);
       if (subName.trim()) {
-        return {id, name: subName.trim(), ghin: subGhin, team, manualStrokes: subStrokes, matchStrokes: subStrokes, netStrokes: subNetStrokes, actualNetStrokes: subNetStrokes, isSub: true, absentPlayer: document.getElementById(id + '-name').value || ''};
+        return {id, name: subName.trim(), ghin: subGhin, team, isSub: true, absentPlayer: document.getElementById(id + '-name').value || ''};
       }
-      return {id, name: document.getElementById(id + '-name').value || defaultName, ghin: '', team, manualStrokes: null, matchStrokes: null, netStrokes: null, actualNetStrokes: null, isAbsent: true, absentPlayer: document.getElementById(id + '-name').value || defaultName};
+      return {id, name: document.getElementById(id + '-name').value || defaultName, ghin: '', team, isAbsent: true, absentPlayer: document.getElementById(id + '-name').value || defaultName};
     }
-    const strokes = getManualStrokeInputValue(id, false);
-    const netStrokes = getNetStrokeInputValue(id, false);
-    return {id, name: document.getElementById(id + '-name').value || defaultName, ghin: document.getElementById(id + '-ghin').value, team, manualStrokes: strokes, matchStrokes: strokes, netStrokes, actualNetStrokes: netStrokes};
+    return {id, name: document.getElementById(id + '-name').value || defaultName, ghin: document.getElementById(id + '-ghin').value, team};
   }
 
-  const p1aStrokes = getManualStrokeInputValue('p1a', false);
-  const p2aStrokes = getManualStrokeInputValue('p2a', false);
-  const p1aNetStrokes = getNetStrokeInputValue('p1a', false);
-  const p2aNetStrokes = getNetStrokeInputValue('p2a', false);
-
   return [
-    {id:'p1a', name:document.getElementById('p1a-name').value||'Player 1A', ghin:document.getElementById('p1a-ghin').value, team:1, manualStrokes:p1aStrokes, matchStrokes:p1aStrokes, netStrokes:p1aNetStrokes, actualNetStrokes:p1aNetStrokes},
+    {id:'p1a', name:document.getElementById('p1a-name').value||'Player 1A', ghin:document.getElementById('p1a-ghin').value, team:1},
     buildSlot('p1b', 'Player 1B', 1),
-    {id:'p2a', name:document.getElementById('p2a-name').value||'Player 2A', ghin:document.getElementById('p2a-ghin').value, team:2, manualStrokes:p2aStrokes, matchStrokes:p2aStrokes, netStrokes:p2aNetStrokes, actualNetStrokes:p2aNetStrokes},
+    {id:'p2a', name:document.getElementById('p2a-name').value||'Player 2A', ghin:document.getElementById('p2a-ghin').value, team:2},
     buildSlot('p2b', 'Player 2B', 2),
   ];
 }
@@ -2046,27 +1943,11 @@ function countTeamGrossPars(players, indexes, holes) {
   }, 0);
 }
 
-
-function getActualNetStrokeSetsForTiebreaker(players, holes) {
-  // Match play hole winners use the manually entered Squabbit Strokes Received.
-  // Match tiebreakers use each player's ACTUAL net-score strokes, matching Squabbit's Net tab.
-  const side = (holes && holes.length && holes[0].hole >= 10) ? 'back' : 'front';
-  const actualNetStrokes = calcPlayerStatStrokes(players, side);
-  return players.map(function(p, i) {
-    return getStrokeHoles(actualNetStrokes[i] || 0, holes);
-  });
-}
-
 function calcTieBreakerWinner(players, strokeSets, holes) {
   const t1 = [0, 1];
   const t2 = [2, 3];
-
-  // IMPORTANT: tiebreakers are based on ACTUAL net scores, not relative match-play strokes.
-  // Manual Strokes Received remain the source for match-play dots/hole wins only.
-  const actualNetStrokeSets = getActualNetStrokeSetsForTiebreaker(players, holes);
-
-  const t1Combined = getTeamCombinedNet(players, actualNetStrokeSets, t1, holes);
-  const t2Combined = getTeamCombinedNet(players, actualNetStrokeSets, t2, holes);
+  const t1Combined = getTeamCombinedNet(players, strokeSets, t1, holes);
+  const t2Combined = getTeamCombinedNet(players, strokeSets, t2, holes);
 
   if (t1Combined !== null && t2Combined !== null && t1Combined !== t2Combined) {
     return {
@@ -2078,24 +1959,24 @@ function calcTieBreakerWinner(players, strokeSets, holes) {
 
   const hardest = [...holes].sort((a, b) => a.hcp - b.hcp);
   for (const h of hardest) {
-    const t1Best = getTeamBestNet(players, actualNetStrokeSets, t1, h);
-    const t2Best = getTeamBestNet(players, actualNetStrokeSets, t2, h);
+    const t1Best = getTeamBestNet(players, strokeSets, t1, h);
+    const t2Best = getTeamBestNet(players, strokeSets, t2, h);
     if (t1Best !== null && t2Best !== null && t1Best !== t2Best) {
       return {
         winner: t1Best < t2Best ? 0 : 1,
         label: 'TB · Hardest Hole',
-        detail: `Hardest-hole actual net tiebreaker on hole ${h.hole}`
+        detail: `Hardest-hole tiebreaker on hole ${h.hole}`
       };
     }
   }
 
-  const t1Birdies = countTeamNetBirdies(players, actualNetStrokeSets, t1, holes);
-  const t2Birdies = countTeamNetBirdies(players, actualNetStrokeSets, t2, holes);
+  const t1Birdies = countTeamNetBirdies(players, strokeSets, t1, holes);
+  const t2Birdies = countTeamNetBirdies(players, strokeSets, t2, holes);
   if (t1Birdies !== t2Birdies) {
     return {
       winner: t1Birdies > t2Birdies ? 0 : 1,
       label: 'TB · Net Birdies',
-      detail: `Actual net birdies ${t1Birdies}-${t2Birdies}`
+      detail: `Net birdies ${t1Birdies}-${t2Birdies}`
     };
   }
 
@@ -2228,7 +2109,7 @@ function renderScorecard() {
   const totalPar = holes.reduce((s,h)=>s+h.par,0);
   let html = `<thead><tr>
     <th style="text-align:left;padding-left:8px">Player</th>
-    <th>Strokes<br><span style="font-size:9px;color:rgba(107,130,153,0.7)">Squabbit</span></th>
+    <th>Hdcp<br><span style="font-size:9px;color:rgba(107,130,153,0.7)">(9-hole)</span></th>
     ${holes.map(h=>`<th class="h-col">${h.hole}</th>`).join('')}
     <th>NET</th>
   </tr>
@@ -2244,8 +2125,7 @@ function renderScorecard() {
   </tr></thead><tbody>`;
 
   players.forEach((p, pi) => {
-    const manualStrokeValue = getManualStrokeNumber(p.manualStrokes ?? p.matchStrokes ?? p.strokesReceived);
-    const ch = manualStrokeValue !== null ? manualStrokeValue : null;
+    const ch = isNaN(parseFloat(p.ghin)) ? null : nineHoleHdcp(p.ghin, side);
     const ns = strokes[pi];
     const rowClass = pi < 2 ? 't1-bg' : 't2-bg';
     const divClass = pi === 2 ? ' team-divider' : '';
@@ -2271,7 +2151,7 @@ function renderScorecard() {
 
     html += `<tr class="${rowClass}${divClass}">
       <td class="pname-cell">${p.name}</td>
-      <td class="hdcp-cell">${ch !== null ? ch : '—'}</td>
+      <td class="hdcp-cell">${ch !== null ? `${ch}${ns>0?` <span style="color:var(--green);font-size:10px">(+${ns})</span>`:''}`:'—'}</td>
       ${tds}
       <td class="net-cell">${netCount>0?netTotal:'—'}</td>
     </tr>`;
@@ -2413,8 +2293,6 @@ async function saveMatch() {
 
   const holes = getHoles();
   const players = getPlayers();
-  if(!validateManualStrokesBeforeSave(players)) return;
-  if(!validateNetStrokesBeforeSave(players)) return;
   const strokes = calcPlayerStrokes(players, side);
   const strokeSets = players.map((p,i) => getStrokeHoles(strokes[i], holes));
   const state = calcMatchState(players, strokeSets, holes);
@@ -2469,10 +2347,6 @@ async function saveMatch() {
       name: p.name,
       ghin: p.ghin,
       team: p.team,
-      manualStrokes: getManualStrokeNumber(p.manualStrokes ?? p.matchStrokes ?? p.strokesReceived),
-      matchStrokes: getManualStrokeNumber(p.matchStrokes ?? p.manualStrokes ?? p.strokesReceived),
-      netStrokes: getManualStrokeNumber(p.netStrokes ?? p.actualNetStrokes ?? p.squabbitNetStrokes),
-      actualNetStrokes: getManualStrokeNumber(p.actualNetStrokes ?? p.netStrokes ?? p.squabbitNetStrokes),
       ...(p.isSub ? {isSub: true, absentPlayer: p.absentPlayer || ''} : {}),
       ...(p.isAbsent ? {isAbsent: true, absentPlayer: p.absentPlayer || ''} : {})
     })),
@@ -2509,8 +2383,6 @@ async function saveMatch() {
   ['p1a','p1b','p2a','p2b'].forEach(id => {
     document.getElementById(id+'-name').value = '';
     document.getElementById(id+'-ghin').value = '';
-    const strokesEl = document.getElementById(id+'-strokes');
-    if (strokesEl) strokesEl.value = '';
   });
   document.getElementById('sc-week').value = '';
   document.getElementById('scorecard-card').style.display = 'none';
@@ -3594,4 +3466,229 @@ function buildPlayoffPicture() {
     '<div class="bracket-team-record">TBD</div></div>' +
     '<div class="bracket-seed">?</div></div></div>' +
     '</div></div>';
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   HGGL v4.9.24 stability patch
+   - True JSONP Google Sheets sync for mobile/desktop consistency
+   - Recalculates records/holes won from Results after every data pull
+   - Fixes cached-browser standings showing 0-0 after results exist
+   - Broadens Skins/CTP data mapping
+   ───────────────────────────────────────────────────────────────────────────── */
+
+function hgglNormalizeTeamKey_(name) {
+  return normalizeTeamName(String(name || '').trim());
+}
+
+function hgglCurrentTeamBase_() {
+  var current = (Array.isArray(TEAMS) && TEAMS.length ? TEAMS : DEFAULT_TEAMS);
+  return current.map(function(t) {
+    return Object.assign({}, t, {
+      name: hgglNormalizeTeamKey_(t.name),
+      w: 0,
+      l: 0,
+      holesWon: 0,
+      holesLost: 0,
+      holeDiff: 0,
+      matches: 0
+    });
+  });
+}
+
+function recalcRecordsFromResults() {
+  var base = hgglCurrentTeamBase_();
+  var byName = {};
+  base.forEach(function(t) { byName[hgglNormalizeTeamKey_(t.name)] = t; });
+
+  (Array.isArray(RESULTS) ? RESULTS : []).forEach(function(r) {
+    var team1 = hgglNormalizeTeamKey_(r.team1 || r.Team1 || r['Team 1']);
+    var team2 = hgglNormalizeTeamKey_(r.team2 || r.Team2 || r['Team 2']);
+    var winner = hgglNormalizeTeamKey_(r.winner || r.Winner);
+    if (!team1 || !team2) return;
+
+    if (!byName[team1]) byName[team1] = { name: team1, players: '', w:0, l:0, holesWon:0, holesLost:0, holeDiff:0, matches:0 };
+    if (!byName[team2]) byName[team2] = { name: team2, players: '', w:0, l:0, holesWon:0, holesLost:0, holeDiff:0, matches:0 };
+
+    var t1 = byName[team1];
+    var t2 = byName[team2];
+    var t1Holes = Number(r.team1HolesWon || (r.holesWon && r.holesWon.team1) || r['Team 1 Holes Won'] || r.Team1HolesWon || 0) || 0;
+    var t2Holes = Number(r.team2HolesWon || (r.holesWon && r.holesWon.team2) || r['Team 2 Holes Won'] || r.Team2HolesWon || 0) || 0;
+
+    t1.matches = (Number(t1.matches) || 0) + 1;
+    t2.matches = (Number(t2.matches) || 0) + 1;
+    t1.holesWon = (Number(t1.holesWon) || 0) + t1Holes;
+    t1.holesLost = (Number(t1.holesLost) || 0) + t2Holes;
+    t2.holesWon = (Number(t2.holesWon) || 0) + t2Holes;
+    t2.holesLost = (Number(t2.holesLost) || 0) + t1Holes;
+
+    if (winner && winner === team1) { t1.w = (Number(t1.w) || 0) + 1; t2.l = (Number(t2.l) || 0) + 1; }
+    else if (winner && winner === team2) { t2.w = (Number(t2.w) || 0) + 1; t1.l = (Number(t1.l) || 0) + 1; }
+    else { t1.w = (Number(t1.w) || 0) + 0.5; t2.w = (Number(t2.w) || 0) + 0.5; }
+  });
+
+  TEAMS = Object.values(byName).map(function(t) {
+    t.holeDiff = (Number(t.holesWon) || 0) - (Number(t.holesLost) || 0);
+    return t;
+  });
+}
+
+function loadState() {
+  try {
+    var raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    var parsed = JSON.parse(raw);
+    if (Array.isArray(parsed.results)) RESULTS = parsed.results;
+    if (Array.isArray(parsed.teams)) {
+      TEAMS = DEFAULT_TEAMS.map(function(def) {
+        var cached = parsed.teams.find(function(t) { return hgglNormalizeTeamKey_(t.name) === hgglNormalizeTeamKey_(def.name); }) || {};
+        return Object.assign({}, def, cached, { name: hgglNormalizeTeamKey_(cached.name || def.name) });
+      });
+    }
+    recalcRecordsFromResults();
+    if (parsed.savedAt) {
+      try {
+        LEAGUE_DATA_SOURCE = 'Cached Browser Copy';
+        LEAGUE_DATA_LAST_LOADED = new Date(parsed.savedAt).toLocaleString('en-US', { timeZone: 'America/New_York' });
+      } catch(e) { LEAGUE_DATA_LAST_LOADED = String(parsed.savedAt); }
+    }
+    if (typeof parsed.commissionerNote === 'string' && parsed.commissionerNote.trim()) {
+      localStorage.setItem('hggl2026_commissioner_note', parsed.commissionerNote);
+    }
+  } catch (err) {
+    console.warn('League data could not be loaded.', err);
+  }
+}
+
+function hgglRowsFromData_(data, keys) {
+  for (var i = 0; i < keys.length; i++) {
+    var v = data && data[keys[i]];
+    if (Array.isArray(v)) return v;
+  }
+  return [];
+}
+
+function applySkinsCtpFromSheet(data) {
+  var skins = hgglRowsFromData_(data || {}, ['skins','Skins','netSkins','NetSkins','net_skins']);
+  var ctp = hgglRowsFromData_(data || {}, ['ctp','CTP','closestToPin','ClosestToPin','closest_to_pin']);
+  var combined = hgglRowsFromData_(data || {}, ['extras','Extras','skinsCtp','SkinsCTP','skinsAndCtp','SkinsAndCTP']);
+
+  if (combined.length) {
+    combined.forEach(function(r) {
+      var type = String(r.Type || r.Category || r.Event || r._type || '').toLowerCase();
+      if (type.indexOf('ctp') >= 0 || type.indexOf('closest') >= 0) ctp.push(r);
+      else if (type.indexOf('skin') >= 0 || r.Skins || r.TotalPot) skins.push(r);
+    });
+  }
+
+  SKINS_DATA = skins.filter(function(r) { return r && (r.Week || r.week) && (r.Player || r.player); })
+    .map(function(r) { return Object.assign({}, r, { Week: r.Week || r.week, Player: r.Player || r.player }); });
+  CTP_DATA = ctp.filter(function(r) { return r && (r.Week || r.week) && (r.Player || r.player); })
+    .map(function(r) { return Object.assign({}, r, { Week: r.Week || r.week, Player: r.Player || r.player }); });
+}
+
+function applyLeagueDataFromSheet(data) {
+  LEAGUE_API_DATA = data || {};
+  TEAMS = buildTeamsFromSheet(LEAGUE_API_DATA);
+
+  if (LEAGUE_API_DATA.schedule && LEAGUE_API_DATA.schedule.length) {
+    var builtWeeks = buildScheduleFromSheet(LEAGUE_API_DATA);
+    if (builtWeeks && builtWeeks.length) SCHEDULE_WEEKS = builtWeeks;
+  }
+
+  RESULTS = (LEAGUE_API_DATA.results || [])
+    .map(normalizeResultFromSheet)
+    .filter(function(r) { return r.week && r.team1 && r.team2; });
+
+  // Critical: public standings/power rankings should be driven by Results, not a stale Standings sheet.
+  recalcRecordsFromResults();
+
+  if (LEAGUE_API_DATA.commissionerNote !== undefined && LEAGUE_API_DATA.commissionerNote !== null) {
+    localStorage.setItem('hggl2026_commissioner_note', String(LEAGUE_API_DATA.commissionerNote));
+  }
+
+  applySkinsCtpFromSheet(LEAGUE_API_DATA);
+  if (typeof applyAttendanceFromSheet === 'function') applyAttendanceFromSheet(LEAGUE_API_DATA);
+  if (typeof applyHandicapFromSheet === 'function') applyHandicapFromSheet(LEAGUE_API_DATA);
+
+  LEAGUE_DATA_SOURCE = 'Google Sheets';
+  LEAGUE_DATA_LAST_LOADED = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
+
+  function refreshExtraCards() {
+    if (typeof applyAttendanceFromSheet === 'function') applyAttendanceFromSheet(LEAGUE_API_DATA);
+    if (typeof applyHandicapFromSheet === 'function') applyHandicapFromSheet(LEAGUE_API_DATA);
+    var attCard = document.getElementById('bar-attendance-card');
+    if (attCard && typeof buildAttendanceCardHTML === 'function') {
+      attCard.innerHTML = '<div class="dash-label">🍺 Bar Attendance</div>' + buildAttendanceCardHTML();
+    }
+    var hcpCard = document.getElementById('handicap-tracker-card');
+    if (hcpCard && typeof buildHandicapCardHTML === 'function') {
+      hcpCard.innerHTML = '<div class="dash-label">📊 Handicap Tracker</div>' + buildHandicapCardHTML();
+    }
+  }
+  refreshExtraCards();
+  setTimeout(refreshExtraCards, 800);
+}
+
+async function leagueJsonpRequest(action, payload) {
+  payload = payload || {};
+  if (!LEAGUE_API_URL) throw new Error('Missing Google Sheets API URL.');
+
+  return new Promise(function(resolve, reject) {
+    var callbackName = 'hgglJsonp_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
+    var script = document.createElement('script');
+    var finished = false;
+
+    function cleanup() {
+      if (finished) return;
+      finished = true;
+      try { delete window[callbackName]; } catch(e) { window[callbackName] = undefined; }
+      if (script && script.parentNode) script.parentNode.removeChild(script);
+    }
+
+    var timer = setTimeout(function() {
+      cleanup();
+      reject(new Error('Request timed out.'));
+    }, 25000);
+
+    window[callbackName] = function(json) {
+      clearTimeout(timer);
+      cleanup();
+      if (!json || json.ok === false) reject(new Error((json && json.error) || 'API error'));
+      else resolve(json);
+    };
+
+    script.onerror = function() {
+      clearTimeout(timer);
+      cleanup();
+      reject(new Error('Google Sheets script failed to load.'));
+    };
+
+    var params = new URLSearchParams();
+    params.set('action', action);
+    params.set('callback', callbackName);
+    params.set('v', String(Date.now()));
+    if (payload && Object.keys(payload).length) params.set('payload', JSON.stringify(payload));
+    script.src = LEAGUE_API_URL + '?' + params.toString();
+    document.body.appendChild(script);
+  });
+}
+
+
+function fetchLeagueDataFromSheets(silent) {
+  silent = !!silent;
+  if (!USE_GOOGLE_SHEETS_SYNC || !LEAGUE_API_URL) return Promise.resolve(false);
+  return leagueJsonpRequest('getLeagueData').then(function(json) {
+    applyLeagueDataFromSheet(json.data || {});
+    persistState();
+    rebuildAll();
+    if (typeof buildScheduledMatchSelect === 'function') buildScheduledMatchSelect();
+    if (typeof initCommissionerNoteEditor === 'function') initCommissionerNoteEditor();
+    return true;
+  }).catch(function(err) {
+    console.warn('Google Sheets sync failed; using local fallback.', err);
+    LEAGUE_DATA_SOURCE = 'local fallback';
+    if (!silent) alert('Could not load Google Sheets data. The site is using the local backup for now.');
+    return false;
+  });
 }
