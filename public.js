@@ -13,8 +13,6 @@ const LOGOS = {
 const COURSE = {
   slope: 125,
   rating: 69.4,      // full 18-hole course rating
-  ratingFront: 35.7, // front 9 course rating used by the scoring app
-  ratingBack: 33.7,  // back 9 course rating used by the scoring app
   par18: 71,         // full 18-hole par
   parFront: 36,      // front 9 par
   parBack: 35,       // back 9 par
@@ -131,61 +129,69 @@ function courseHandicap18Rounded(ghinIndex) {
 }
 
 function roundHandicapAllowance(value) {
-  // Match Squabbit/GHIN-style match-play rounding after the 90% allowance.
-  // Example from Week 3 screenshot:
-  // CJ 37.0 index -> 20.2 front-nine course handicap.
-  // Lowest player around 3.0, difference 17.2 × 90% = 15.5 → 15.
-  // Justyn 44.3 index -> 24.2, difference 21.2 × 90% = 19.1 → 19.
+  // Use conventional rounding for the 90% allowance. Small floating-point
+  // protection avoids cases like 3.599999999 becoming 3.
   return Math.round((Number(value) || 0) + 1e-9);
 }
 
-function nineHoleCourseHandicapRaw(ghinIndex, side) {
-  const idx = parseFloat(ghinIndex);
-  if (isNaN(idx)) return null;
 
-  const isBack = String(side || '').toLowerCase().indexOf('back') >= 0;
-  const rating9 = isBack
-    ? (COURSE.ratingBack !== undefined ? COURSE.ratingBack : COURSE.rating / 2)
-    : (COURSE.ratingFront !== undefined ? COURSE.ratingFront : COURSE.rating / 2);
-  const par9 = isBack ? COURSE.parBack : COURSE.parFront;
-
-  return (idx * (COURSE.slope / 113) / 2) + (rating9 - par9);
+function getManualStrokeNumber(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const n = parseInt(value, 10);
+  return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
-function nineHoleCourseHandicapDisplay(ghinIndex, side) {
-  const raw = nineHoleCourseHandicapRaw(ghinIndex, side);
-  return raw === null ? null : Math.round(raw * 10) / 10;
+function playerIsActiveForStrokes(player) {
+  return !!(player && !player.isAbsent && String(player.name || '').trim());
+}
+
+function allActivePlayersHaveManualStrokes(players) {
+  const active = (players || []).filter(playerIsActiveForStrokes);
+  return active.length > 0 && active.every(p => getManualStrokeNumber(p.manualStrokes ?? p.matchStrokes ?? p.strokesReceived) !== null);
 }
 
 function nineHoleHdcp(ghinIndex, side) {
-  // Individual 9-hole course handicap, rounded for stat/net display.
-  const raw = nineHoleCourseHandicapRaw(ghinIndex, side);
-  return raw === null ? null : Math.max(0, Math.round(raw));
+  const full18Rounded = courseHandicap18Rounded(ghinIndex);
+  if (full18Rounded === null) return null;
+  return Math.max(0, Math.floor(full18Rounded / 2));
 }
 
-function nineHoleHdcpRaw(ghinIndex, side) {
-  return nineHoleCourseHandicapRaw(ghinIndex, side);
+function nineHoleHdcpRaw(ghinIndex) {
+  // Kept for compatibility with any older display/debug calls, but the active
+  // scoring logic should use nineHoleHdcp() so every match and stat card uses
+  // the same GHIN-style 9-hole number.
+  return nineHoleHdcp(ghinIndex);
 }
 
 // Relative match-play strokes only.
-// This now follows the scoring-app flow:
-// raw 9-hole course handicap → compare to lowest raw 9-hole handicap → 90% → rounded strokes.
+// Individual stat/net totals use calcPlayerStatStrokes() below instead.
 function calcPlayerStrokes(players, side) {
+  // Official match strokes should come directly from Squabbit when entered.
+  // If every active player has Strokes Received filled in, those exact values
+  // drive dots, match-play hole results, and the saved score snapshot.
+  if (allActivePlayersHaveManualStrokes(players)) {
+    return players.map(p => playerIsActiveForStrokes(p) ? getManualStrokeNumber(p.manualStrokes ?? p.matchStrokes ?? p.strokesReceived) : 0);
+  }
+
+  // Fallback only for previewing before strokes are entered.
   const hdcps = players.map(p => {
     if (p.isAbsent || !p.name || !p.name.trim()) return null;
-    return nineHoleCourseHandicapRaw(p.ghin, side);
+    return nineHoleHdcp(p.ghin, side);
   });
-  const validHdcps = hdcps.filter(h => h !== null && !isNaN(h));
+  const validHdcps = hdcps.filter(h => h !== null);
   const minHdcp = validHdcps.length ? Math.min(...validHdcps) : 0;
-  return hdcps.map(h => h !== null && !isNaN(h)
-    ? Math.max(0, roundHandicapAllowance((h - minHdcp) * 0.9))
-    : 0
-  );
+  return hdcps.map(h => h !== null ? Math.max(0, roundHandicapAllowance((h - minHdcp) * 0.9)) : 0);
 }
 
 // Individual net-stat handicap for player stat cards / low-net leaders.
-// This uses the player's own rounded 9-hole course handicap before any relative match-play allowance.
+// This uses the player's own 9-hole GHIN-style handicap before any relative
+// match-play comparison/90% allowance.
 function calcPlayerStatStrokes(players, side) {
+  // When official Squabbit strokes are entered, use them consistently for
+  // scorecard/stat net calculations. Otherwise fall back to the old preview math.
+  if (allActivePlayersHaveManualStrokes(players)) {
+    return players.map(p => playerIsActiveForStrokes(p) ? getManualStrokeNumber(p.manualStrokes ?? p.matchStrokes ?? p.strokesReceived) : 0);
+  }
   return players.map(p => {
     if (p.isAbsent || !p.name || !p.name.trim()) return 0;
     const h = nineHoleHdcp(p.ghin, side);
@@ -415,7 +421,14 @@ function normalizeSnapshotPlayer(raw, index, row) {
     ]),
     team: normalizeTeamName(raw.team || raw.Team || getRowValue(row, [
       'P' + playerNo + 'Team', 'P' + playerNo + ' Team', 'Player' + playerNo + 'Team', 'Player ' + playerNo + ' Team'
-    ]) || sideTeam)
+    ]) || sideTeam),
+    manualStrokes: getManualStrokeNumber(raw.manualStrokes ?? raw.matchStrokes ?? raw.strokesReceived ?? raw.StrokesReceived ?? getRowValue(row, [
+      'P' + playerNo + 'Strokes', 'P' + playerNo + ' Strokes', 'Player' + playerNo + 'Strokes', 'Player ' + playerNo + ' Strokes', 'Player ' + playerNo + ' Strokes Received'
+    ])),
+    matchStrokes: getManualStrokeNumber(raw.matchStrokes ?? raw.manualStrokes ?? raw.strokesReceived ?? raw.StrokesReceived),
+    isSub: !!(raw.isSub || raw.sub),
+    isAbsent: !!(raw.isAbsent || raw.absent),
+    absentPlayer: raw.absentPlayer || raw.AbsentPlayer || ''
   };
 }
 
@@ -2094,7 +2107,7 @@ function renderScorecard() {
   </tr></thead><tbody>`;
 
   players.forEach((p, pi) => {
-    const rawCh = isNaN(parseFloat(p.ghin)) ? null : nineHoleCourseHandicapDisplay(p.ghin, side);
+    const ch = isNaN(parseFloat(p.ghin)) ? null : nineHoleHdcp(p.ghin, side);
     const ns = strokes[pi];
     const rowClass = pi < 2 ? 't1-bg' : 't2-bg';
     const divClass = pi === 2 ? ' team-divider' : '';
@@ -2121,7 +2134,7 @@ function renderScorecard() {
 
     html += `<tr class="${rowClass}${divClass}">
       <td class="pname-cell">${p.name}</td>
-      <td class="hdcp-cell" title="${rawCh !== null ? `Raw 9-hole course handicap: ${rawCh}` : ''}">${rawCh !== null ? ns : '—'}</td>
+      <td class="hdcp-cell">${ch !== null ? `${ch}${ns>0?` <span style="color:var(--green);font-size:10px">(+${ns})</span>`:''}`:'—'}</td>
       ${tds}
       <td class="net-cell">${netCount>0?netTotal:'—'}</td>
     </tr>`;

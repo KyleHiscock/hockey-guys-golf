@@ -9,8 +9,8 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Condensed:wght@400;600;700;900&family=Barlow:wght@400;500;600;700;800&family=Inter+Tight:wght@500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=4.9.18-handicap-fix">
-<link rel="stylesheet" href="theme-polished.css?v=4.9.18-handicap-fix">
+<link rel="stylesheet" href="style.css?v=4.9.19-manual-strokes">
+<link rel="stylesheet" href="theme-polished.css?v=4.9.19-manual-strokes">
 
 </head>
 <body>
@@ -195,10 +195,12 @@
           <div class="two-col">
             <div><label class="field-label">Player A</label><input class="field-input" list="roster-options" type="text" id="p1a-name" placeholder="Name" oninput="renderScorecard()"></div>
             <div><label class="field-label">GHIN Index</label><input class="field-input" type="number" id="p1a-ghin" placeholder="e.g. 14.2" step="0.1" min="-10" max="54" oninput="renderScorecard()"></div>
+            <div><label class="field-label">Strokes Received</label><input class="field-input" type="number" id="p1a-strokes" placeholder="Squabbit" step="1" min="0" max="36" oninput="renderScorecard()"></div>
           </div>
           <div class="two-col">
             <div><label class="field-label">Player B</label><input class="field-input" list="roster-options" type="text" id="p1b-name" placeholder="Name" oninput="renderScorecard()"></div>
             <div><label class="field-label">GHIN Index</label><input class="field-input" type="number" id="p1b-ghin" placeholder="e.g. 20.0" step="0.1" min="-10" max="54" oninput="renderScorecard()"></div>
+            <div><label class="field-label">Strokes Received</label><input class="field-input" type="number" id="p1b-strokes" placeholder="Squabbit" step="1" min="0" max="36" oninput="renderScorecard()"></div>
           </div>
           <div id="p1b-absent-row" style="margin-top:4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
             <label style="display:flex;align-items:center;gap:6px;font-family:'Barlow Condensed',sans-serif;font-size:12px;letter-spacing:1px;color:var(--muted);cursor:pointer;">
@@ -210,6 +212,7 @@
               <div class="two-col" style="margin-top:0;">
                 <div><input class="field-input" list="roster-options" type="text" id="p1b-sub-name" placeholder="Sub name" oninput="renderScorecard()" style="font-size:13px;"></div>
                 <div><input class="field-input" type="number" id="p1b-sub-ghin" placeholder="Sub GHIN" step="0.1" min="-10" max="54" oninput="renderScorecard()" style="font-size:13px;"></div>
+                <div><input class="field-input" type="number" id="p1b-sub-strokes" placeholder="Sub strokes" step="1" min="0" max="36" oninput="renderScorecard()" style="font-size:13px;"></div>
               </div>
             </div>
           </div>
@@ -225,10 +228,12 @@
           <div class="two-col">
             <div><label class="field-label">Player A</label><input class="field-input" list="roster-options" type="text" id="p2a-name" placeholder="Name" oninput="renderScorecard()"></div>
             <div><label class="field-label">GHIN Index</label><input class="field-input" type="number" id="p2a-ghin" placeholder="e.g. 8.5" step="0.1" min="-10" max="54" oninput="renderScorecard()"></div>
+            <div><label class="field-label">Strokes Received</label><input class="field-input" type="number" id="p2a-strokes" placeholder="Squabbit" step="1" min="0" max="36" oninput="renderScorecard()"></div>
           </div>
           <div class="two-col">
             <div><label class="field-label">Player B</label><input class="field-input" list="roster-options" type="text" id="p2b-name" placeholder="Name" oninput="renderScorecard()"></div>
             <div><label class="field-label">GHIN Index</label><input class="field-input" type="number" id="p2b-ghin" placeholder="e.g. 12.0" step="0.1" min="-10" max="54" oninput="renderScorecard()"></div>
+            <div><label class="field-label">Strokes Received</label><input class="field-input" type="number" id="p2b-strokes" placeholder="Squabbit" step="1" min="0" max="36" oninput="renderScorecard()"></div>
           </div>
           <div id="p2b-absent-row" style="margin-top:4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
             <label style="display:flex;align-items:center;gap:6px;font-family:'Barlow Condensed',sans-serif;font-size:12px;letter-spacing:1px;color:var(--muted);cursor:pointer;">
@@ -240,6 +245,7 @@
               <div class="two-col" style="margin-top:0;">
                 <div><input class="field-input" list="roster-options" type="text" id="p2b-sub-name" placeholder="Sub name" oninput="renderScorecard()" style="font-size:13px;"></div>
                 <div><input class="field-input" type="number" id="p2b-sub-ghin" placeholder="Sub GHIN" step="0.1" min="-10" max="54" oninput="renderScorecard()" style="font-size:13px;"></div>
+                <div><input class="field-input" type="number" id="p2b-sub-strokes" placeholder="Sub strokes" step="1" min="0" max="36" oninput="renderScorecard()" style="font-size:13px;"></div>
               </div>
             </div>
           </div>
@@ -391,8 +397,8 @@
 
 <div class="footer">Hockey Guys Golf League &nbsp;·&nbsp; 2026 Season &nbsp;·&nbsp; Twin Hills · Spencerport NY</div>
 
-<script src="admin.js?v=4.9.18-handicap-fix"></script>
-<script src="polish.js?v=4.9.18-handicap-fix"></script>
+<script src="admin.js?v=4.9.19-manual-strokes"></script>
+<script src="polish.js?v=4.9.19-manual-strokes"></script>
 
 </body>
 </html>
