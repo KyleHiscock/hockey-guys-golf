@@ -2164,7 +2164,7 @@ function calcMatchState(players, strokeSets, holes) {
       return g !== null && !isNaN(g) ? g - holeStrokeCount(strokeSets[pi], h.hole) : null;
     }).filter(s => s !== null);
 
-    // Only score the hole if at least one active score exists for each team.
+    // Only score a hole if at least one active score exists for each team.
     if (!t1nets.length || !t2nets.length) continue;
 
     holesWithScores++;
@@ -2173,11 +2173,11 @@ function calcMatchState(players, strokeSets, holes) {
     const t2best = Math.min(...t2nets);
     const holeDelta = t1best < t2best ? 1 : (t2best < t1best ? -1 : 0);
 
-    // Always track the true 9-hole status.
+    // Full-round status is used ONLY to detect a true all-square match after 9.
     officialStatus += holeDelta;
 
-    // Track early-close only for incomplete/live scoring. This must never override
-    // a fully entered 9-hole all-square match that goes to tiebreaker.
+    // Early-close/live status remains the official match-play result for completed
+    // non-AS matches, matching Squabbit's W3&2 / W2&1 style output.
     if (!matchOver) {
       liveStatus += holeDelta;
       const holesLeft = holes.length - (hi + 1);
@@ -2190,33 +2190,27 @@ function calcMatchState(players, strokeSets, holes) {
     }
   }
 
-  // Full card entered: official 9-hole result controls.
-  if (holesWithScores === holes.length) {
-    if (officialStatus === 0) {
-      const tb = calcTieBreakerWinner(players, strokeSets, holes);
-      const tbLabel = tb.label && tb.label.indexOf('TB') === 0 ? tb.label : ('TB · ' + (tb.label || 'Tiebreaker'));
-      const matchResult = tb.winner === null ? 'AS' : ('AS · ' + tbLabel.replace('TB · ', 'TB '));
-      return {
-        matchStatus: 0,
-        matchOver,
-        matchResult,
-        winner: tb.winner,
-        holesWithScores,
-        tieBreaker: tb,
-        isAllSquareAfterNine: true
-      };
-    }
-
+  // Full card entered and final status is AS: use league tiebreakers.
+  // This is the one case where the full 9-hole status must override any earlier
+  // live-lock/dormie-style display.
+  if (holesWithScores === holes.length && officialStatus === 0) {
+    const tb = calcTieBreakerWinner(players, strokeSets, holes);
+    const tbLabel = tb.label && tb.label.indexOf('TB') === 0 ? tb.label : ('TB · ' + (tb.label || 'Tiebreaker'));
+    const cleanTbLabel = tbLabel.replace('TB · ', 'TB ');
     return {
-      matchStatus: officialStatus,
+      matchStatus: 0,
       matchOver,
-      matchResult: `${Math.abs(officialStatus)} UP`,
-      winner: officialStatus > 0 ? 0 : 1,
-      holesWithScores
+      matchResult: tb.winner === null ? 'AS' : ('AS · ' + cleanTbLabel),
+      winner: tb.winner,
+      holesWithScores,
+      tieBreaker: tb,
+      isAllSquareAfterNine: true
     };
   }
 
-  // Incomplete/live scoring: early close is allowed.
+  // Completed non-AS match that was mathematically closed earlier: keep the
+  // official early-close result such as 3&2 or 2&1, even if all 9 gross scores
+  // are entered for stats/skins/net purposes.
   if (matchOver) {
     return {
       matchStatus: lockedWinnerStatus,
@@ -2227,6 +2221,18 @@ function calcMatchState(players, strokeSets, holes) {
     };
   }
 
+  // If all 9 are entered and no early close occurred, use the final UP result.
+  if (holesWithScores === holes.length && officialStatus !== 0) {
+    return {
+      matchStatus: officialStatus,
+      matchOver,
+      matchResult: `${Math.abs(officialStatus)} UP`,
+      winner: officialStatus > 0 ? 0 : 1,
+      holesWithScores
+    };
+  }
+
+  // Incomplete/live scoring.
   const matchResult = liveStatus === 0
     ? (holesWithScores > 0 ? 'AS (in progress)' : '')
     : `${Math.abs(liveStatus)} ${liveStatus > 0 ? 'UP T1' : 'UP T2'} (thru ${holesWithScores})`;
@@ -2239,7 +2245,6 @@ function calcMatchState(players, strokeSets, holes) {
     holesWithScores
   };
 }
-
 
 function calcHoleWinTotals(players, strokeSets, holes) {
   let team1HolesWon = 0;

@@ -562,6 +562,10 @@ function normalizeResultFromSheet(row) {
     winner: normalizeTeamName(row.Winner || row.winner || ''),
     matchResult: row.MatchResult || row['Result Text'] || row.matchResult || '',
     tiebreakerDetail: row.TiebreakerDetail || row.tiebreakerDetail || '',
+    combinedNetTiebreaker: row.CombinedNetTiebreaker || row['Combined Net Tiebreaker'] || row.combinedNetTiebreaker || '',
+    hardestHolesTiebreaker: row.HardestHolesTiebreaker || row['Hardest Holes Tiebreaker'] || row.hardestHolesTiebreaker || '',
+    netBirdiesTiebreaker: row.NetBirdiesTiebreaker || row['Net Birdies Tiebreaker'] || row.netBirdiesTiebreaker || '',
+    grossParsTiebreaker: row.GrossParsTiebreaker || row['Gross Pars Tiebreaker'] || row.grossParsTiebreaker || '',
     team1HolesWon: parseSheetNumber(row.Team1HolesWon || row['Team 1 Holes Won'] || row.team1HolesWon || 0),
     team2HolesWon: parseSheetNumber(row.Team2HolesWon || row['Team 2 Holes Won'] || row.team2HolesWon || 0),
     playerLine,
@@ -1551,103 +1555,52 @@ function renderPlayerScoreSummary(result) {
 }
 
 
+function hasTiebreakerSignal(r) {
+  const saved = String((r && r.matchResult) || '').trim();
+  const tbDetail = String((r && (r.tiebreakerDetail || r.CombinedNetTiebreaker || r.combinedNetTiebreaker || '')) || '').trim();
+  return /\bTB\b|tie\s*breaker|tiebreaker|combined\s*net/i.test(saved + ' ' + tbDetail);
+}
+
+function formatSavedTiebreakerResult(saved) {
+  const raw = String(saved || 'TB · Tiebreaker').trim();
+  const withoutAs = raw.replace(/^AS\s*[·\-:]\s*/i, '').trim();
+  if (/^TB\b/i.test(withoutAs)) return withoutAs.replace(/^TB\s*[·\-:]?\s*/i, 'TB ');
+  if (/tie\s*breaker|tiebreaker|combined\s*net/i.test(withoutAs)) return 'TB ' + withoutAs.replace(/^TB\s*/i, '');
+  return 'TB ' + withoutAs;
+}
+
 function calcDisplayedResultFromSnapshot(r) {
-  var snap = getResultSnapshotPlayers(r);
-  var scores = r && r.scoreSnapshot ? r.scoreSnapshot : {};
-  if (!Array.isArray(snap) || snap.length < 4 || !scores || !Object.keys(scores).length) return null;
+  // Public display should not re-score completed matches from gross-score snapshots.
+  // Squabbit-style official results (3&2, 2&1, 1 UP, AS/TB) are saved in Results.
+  // Re-scoring all 9 gross holes can incorrectly turn a saved W3&2 into 2 UP.
+  // This helper now only normalizes saved tiebreaker rows so AS is visible.
+  if (!r) return null;
+  const saved = String(r.matchResult || '').trim();
+  if (!saved) return null;
 
-  var side = String(r.side || '').toLowerCase().indexOf('back') >= 0 ? 'back' : 'front';
-  var holes = side === 'front' ? COURSE.front : COURSE.back;
-  var strokes = calcPlayerStrokes(snap, side);
-  var strokeSets = snap.map(function(p, i) { return getStrokeHoles(strokes[i], holes); });
-
-  var officialStatus = 0;
-  var liveStatus = 0;
-  var holesWithScores = 0;
-  var matchOver = false;
-  var matchOverResult = '';
-  var lockedWinnerStatus = 0;
-
-  for (var hi = 0; hi < holes.length; hi++) {
-    var h = holes[hi];
-
-    var t1nets = [0,1].map(function(pi) {
-      var g = getScoreForPlayerHole(scores, snap[pi], pi, h.hole);
-      if (g === null || isNaN(g)) return null;
-      return g - holeStrokeCount(strokeSets[pi], h.hole);
-    }).filter(function(v) { return v !== null; });
-
-    var t2nets = [2,3].map(function(pi) {
-      var g = getScoreForPlayerHole(scores, snap[pi], pi, h.hole);
-      if (g === null || isNaN(g)) return null;
-      return g - holeStrokeCount(strokeSets[pi], h.hole);
-    }).filter(function(v) { return v !== null; });
-
-    if (!t1nets.length || !t2nets.length) continue;
-
-    holesWithScores++;
-
-    var t1best = Math.min.apply(null, t1nets);
-    var t2best = Math.min.apply(null, t2nets);
-    var holeDelta = t1best < t2best ? 1 : (t2best < t1best ? -1 : 0);
-
-    officialStatus += holeDelta;
-
-    if (!matchOver) {
-      liveStatus += holeDelta;
-      var holesLeft = holes.length - (hi + 1);
-
-      if (holesLeft > 0 && Math.abs(liveStatus) > holesLeft) {
-        matchOver = true;
-        lockedWinnerStatus = liveStatus;
-        matchOverResult = Math.abs(liveStatus) + '&' + holesLeft;
-      }
-    }
+  if (/^AS\b/i.test(saved)) {
+    return { matchResult: saved, winner: r.winner || null };
   }
 
-  // Full 9-hole card entered: official final status controls display.
-  // If AS after 9, keep the saved winner/tiebreaker but visibly show AS.
-  if (holesWithScores === holes.length) {
-    if (officialStatus === 0) {
-      var saved = String(r.matchResult || r.MatchResult || r['Result Text'] || 'TB · Tiebreaker');
-      var clean = saved.replace(/^AS\s*[·\-:]\s*/i, '');
-      var label = clean.indexOf('TB') === 0 ? clean : ('TB · ' + clean);
-      label = label.replace('TB · ', 'TB ');
-      return {
-        matchResult: 'AS · ' + label,
-        winner: r.winner || null,
-        matchStatus: 0,
-        holesWithScores: holesWithScores,
-        isAllSquareAfterNine: true
-      };
-    }
-
+  if (hasTiebreakerSignal(r)) {
     return {
-      matchResult: Math.abs(officialStatus) + ' UP',
-      winner: officialStatus > 0 ? r.team1 : r.team2,
-      matchStatus: officialStatus,
-      holesWithScores: holesWithScores
+      matchResult: 'AS · ' + formatSavedTiebreakerResult(saved),
+      winner: r.winner || null,
+      isAllSquareAfterNine: true
     };
   }
 
-  // Only incomplete/live cards should use early-close display.
-  if (matchOver && matchOverResult) {
-    return {
-      matchResult: matchOverResult,
-      winner: lockedWinnerStatus > 0 ? r.team1 : r.team2,
-      matchStatus: lockedWinnerStatus,
-      holesWithScores: holesWithScores
-    };
-  }
-
-  return null;
+  return {
+    matchResult: saved,
+    winner: r.winner || null
+  };
 }
 
 function getDisplayedResultInfo(r) {
-  var recalculated = calcDisplayedResultFromSnapshot(r);
+  var displayed = calcDisplayedResultFromSnapshot(r);
   return {
-    matchResult: recalculated && recalculated.matchResult ? recalculated.matchResult : (r.matchResult || 'Final'),
-    winner: recalculated && recalculated.winner ? recalculated.winner : (r.winner || null)
+    matchResult: displayed && displayed.matchResult ? displayed.matchResult : (r.matchResult || 'Final'),
+    winner: displayed && displayed.winner ? displayed.winner : (r.winner || null)
   };
 }
 
