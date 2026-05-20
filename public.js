@@ -134,22 +134,6 @@ function roundHandicapAllowance(value) {
   return Math.round((Number(value) || 0) + 1e-9);
 }
 
-
-function getManualStrokeNumber(value) {
-  if (value === undefined || value === null || value === '') return null;
-  const n = parseInt(value, 10);
-  return Number.isFinite(n) && n >= 0 ? n : null;
-}
-
-function playerIsActiveForStrokes(player) {
-  return !!(player && !player.isAbsent && String(player.name || '').trim());
-}
-
-function allActivePlayersHaveManualStrokes(players) {
-  const active = (players || []).filter(playerIsActiveForStrokes);
-  return active.length > 0 && active.every(p => getManualStrokeNumber(p.manualStrokes ?? p.matchStrokes ?? p.strokesReceived) !== null);
-}
-
 function nineHoleHdcp(ghinIndex, side) {
   const full18Rounded = courseHandicap18Rounded(ghinIndex);
   if (full18Rounded === null) return null;
@@ -166,14 +150,6 @@ function nineHoleHdcpRaw(ghinIndex) {
 // Relative match-play strokes only.
 // Individual stat/net totals use calcPlayerStatStrokes() below instead.
 function calcPlayerStrokes(players, side) {
-  // Official match strokes should come directly from Squabbit when entered.
-  // If every active player has Strokes Received filled in, those exact values
-  // drive dots, match-play hole results, and the saved score snapshot.
-  if (allActivePlayersHaveManualStrokes(players)) {
-    return players.map(p => playerIsActiveForStrokes(p) ? getManualStrokeNumber(p.manualStrokes ?? p.matchStrokes ?? p.strokesReceived) : 0);
-  }
-
-  // Fallback only for previewing before strokes are entered.
   const hdcps = players.map(p => {
     if (p.isAbsent || !p.name || !p.name.trim()) return null;
     return nineHoleHdcp(p.ghin, side);
@@ -187,11 +163,6 @@ function calcPlayerStrokes(players, side) {
 // This uses the player's own 9-hole GHIN-style handicap before any relative
 // match-play comparison/90% allowance.
 function calcPlayerStatStrokes(players, side) {
-  // When official Squabbit strokes are entered, use them consistently for
-  // scorecard/stat net calculations. Otherwise fall back to the old preview math.
-  if (allActivePlayersHaveManualStrokes(players)) {
-    return players.map(p => playerIsActiveForStrokes(p) ? getManualStrokeNumber(p.manualStrokes ?? p.matchStrokes ?? p.strokesReceived) : 0);
-  }
   return players.map(p => {
     if (p.isAbsent || !p.name || !p.name.trim()) return 0;
     const h = nineHoleHdcp(p.ghin, side);
@@ -421,14 +392,7 @@ function normalizeSnapshotPlayer(raw, index, row) {
     ]),
     team: normalizeTeamName(raw.team || raw.Team || getRowValue(row, [
       'P' + playerNo + 'Team', 'P' + playerNo + ' Team', 'Player' + playerNo + 'Team', 'Player ' + playerNo + ' Team'
-    ]) || sideTeam),
-    manualStrokes: getManualStrokeNumber(raw.manualStrokes ?? raw.matchStrokes ?? raw.strokesReceived ?? raw.StrokesReceived ?? getRowValue(row, [
-      'P' + playerNo + 'Strokes', 'P' + playerNo + ' Strokes', 'Player' + playerNo + 'Strokes', 'Player ' + playerNo + ' Strokes', 'Player ' + playerNo + ' Strokes Received'
-    ])),
-    matchStrokes: getManualStrokeNumber(raw.matchStrokes ?? raw.manualStrokes ?? raw.strokesReceived ?? raw.StrokesReceived),
-    isSub: !!(raw.isSub || raw.sub),
-    isAbsent: !!(raw.isAbsent || raw.absent),
-    absentPlayer: raw.absentPlayer || raw.AbsentPlayer || ''
+    ]) || sideTeam)
   };
 }
 
@@ -1955,11 +1919,26 @@ function countTeamGrossPars(players, indexes, holes) {
   }, 0);
 }
 
+function getActualNetStrokeSetsForTiebreaker(players, holes) {
+  // Match play hole winners use the manually entered relative Squabbit strokes.
+  // Tiebreakers use each player's actual net score, matching Squabbit's Net tab.
+  const side = (holes && holes.length && holes[0].hole >= 10) ? 'back' : 'front';
+  const actualNetStrokes = calcPlayerStatStrokes(players, side);
+  return players.map(function(p, i) {
+    return getStrokeHoles(actualNetStrokes[i] || 0, holes);
+  });
+}
+
 function calcTieBreakerWinner(players, strokeSets, holes) {
   const t1 = [0, 1];
   const t2 = [2, 3];
-  const t1Combined = getTeamCombinedNet(players, strokeSets, t1, holes);
-  const t2Combined = getTeamCombinedNet(players, strokeSets, t2, holes);
+
+  // IMPORTANT: tiebreakers are based on ACTUAL net scores, not relative match-play strokes.
+  // Example: if Squabbit Net tab shows team totals 94 vs 89, this should use those totals.
+  const actualNetStrokeSets = getActualNetStrokeSetsForTiebreaker(players, holes);
+
+  const t1Combined = getTeamCombinedNet(players, actualNetStrokeSets, t1, holes);
+  const t2Combined = getTeamCombinedNet(players, actualNetStrokeSets, t2, holes);
 
   if (t1Combined !== null && t2Combined !== null && t1Combined !== t2Combined) {
     return {
@@ -1971,24 +1950,24 @@ function calcTieBreakerWinner(players, strokeSets, holes) {
 
   const hardest = [...holes].sort((a, b) => a.hcp - b.hcp);
   for (const h of hardest) {
-    const t1Best = getTeamBestNet(players, strokeSets, t1, h);
-    const t2Best = getTeamBestNet(players, strokeSets, t2, h);
+    const t1Best = getTeamBestNet(players, actualNetStrokeSets, t1, h);
+    const t2Best = getTeamBestNet(players, actualNetStrokeSets, t2, h);
     if (t1Best !== null && t2Best !== null && t1Best !== t2Best) {
       return {
         winner: t1Best < t2Best ? 0 : 1,
         label: 'TB · Hardest Hole',
-        detail: `Hardest-hole tiebreaker on hole ${h.hole}`
+        detail: `Hardest-hole actual net tiebreaker on hole ${h.hole}`
       };
     }
   }
 
-  const t1Birdies = countTeamNetBirdies(players, strokeSets, t1, holes);
-  const t2Birdies = countTeamNetBirdies(players, strokeSets, t2, holes);
+  const t1Birdies = countTeamNetBirdies(players, actualNetStrokeSets, t1, holes);
+  const t2Birdies = countTeamNetBirdies(players, actualNetStrokeSets, t2, holes);
   if (t1Birdies !== t2Birdies) {
     return {
       winner: t1Birdies > t2Birdies ? 0 : 1,
       label: 'TB · Net Birdies',
-      detail: `Net birdies ${t1Birdies}-${t2Birdies}`
+      detail: `Actual net birdies ${t1Birdies}-${t2Birdies}`
     };
   }
 
