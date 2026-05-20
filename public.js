@@ -1338,6 +1338,27 @@ function getLatestResultsInfo() {
 }
 
 
+
+function formatLatestWeekScoreLabel(value) {
+  var raw = String(value || '').trim();
+  var clean = raw.replace(/\s+/g, ' ');
+  var lower = clean.toLowerCase();
+
+  // Keep the dashboard chip compact so long tiebreaker labels do not collide
+  // with logos/team names in the Latest Results card. Full result text remains
+  // available on the Results page and in the hover title.
+  if (lower.indexOf('combined net') >= 0 && (lower.indexOf('tb') >= 0 || lower.indexOf('tiebreak') >= 0)) {
+    return 'AS · TB';
+  }
+  if (lower.indexOf('tb') === 0 || lower.indexOf('tiebreak') === 0) {
+    return 'AS · TB';
+  }
+  if (lower.indexOf('as') === 0 && lower.indexOf('tb') >= 0) {
+    return 'AS · TB';
+  }
+  return clean || 'Final';
+}
+
 function renderLatestWeekResultsList(results) {
   return '<div class="latest-week-results-list">' + results.map(function(r){
     const displayInfo = getDisplayedResultInfo(r);
@@ -1354,8 +1375,9 @@ function renderLatestWeekResultsList(results) {
     const team2Html = '<span class="latest-week-team ' + (t2w ? 'winner' : '') + '">' +
       logoImg(r.team2 || '', 'latest-week-logo', 'latest-week-logo-placeholder') +
       '<span>' + escapeLeagueHtml(r.team2 || '') + '</span></span>';
+    const compactScore = formatLatestWeekScoreLabel(displayInfo.matchResult || 'Final');
     return '<div class="latest-week-result-row">' +
-      '<div class="latest-week-score">' + escapeLeagueHtml(displayInfo.matchResult || 'Final') + '</div>' +
+      '<div class="latest-week-score" title="' + escapeLeagueHtml(displayInfo.matchResult || 'Final') + '">' + escapeLeagueHtml(compactScore) + '</div>' +
       '<div class="latest-week-body">' +
         '<div class="latest-week-matchup">' + team1Html + '<span class="latest-week-vs">vs</span>' + team2Html + '</div>' +
         (winnerName ? '<div class="latest-week-winner">Winner: ' + escapeLeagueHtml(winnerName) + '</div>' : '<div class="latest-week-winner">Tie / pending</div>') +
