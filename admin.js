@@ -170,21 +170,13 @@ function nineHoleHdcpRaw(ghinIndex) {
 // Relative match-play strokes only.
 // Individual stat/net totals use calcPlayerStatStrokes() below instead.
 function calcPlayerStrokes(players, side) {
-  // Official match strokes should come directly from Squabbit when entered.
-  // If every active player has Strokes Received filled in, those exact values
-  // drive dots, match-play hole results, and the saved score snapshot.
-  if (allActivePlayersHaveManualStrokes(players)) {
-    return players.map(p => playerIsActiveForStrokes(p) ? getManualStrokeNumber(p.manualStrokes ?? p.matchStrokes ?? p.strokesReceived) : 0);
-  }
-
-  // Fallback only for previewing before strokes are entered.
-  const hdcps = players.map(p => {
-    if (p.isAbsent || !p.name || !p.name.trim()) return null;
-    return nineHoleHdcp(p.ghin, side);
+  // Match-play dots/hole wins should use ONLY the weekly Squabbit Match Strokes entered by the commissioner.
+  // Do not calculate fallback strokes from GHIN here; blank manual fields should show no strokes until entered.
+  return (players || []).map(function(p) {
+    if (!playerIsActiveForStrokes(p)) return 0;
+    var n = getManualStrokeNumber(p.manualStrokes ?? p.matchStrokes ?? p.strokesReceived);
+    return n === null ? 0 : n;
   });
-  const validHdcps = hdcps.filter(h => h !== null);
-  const minHdcp = validHdcps.length ? Math.min(...validHdcps) : 0;
-  return hdcps.map(h => h !== null ? Math.max(0, roundHandicapAllowance((h - minHdcp) * 0.9)) : 0);
 }
 
 // Individual net-stat handicap for player stat cards / low-net leaders.
@@ -2279,7 +2271,7 @@ function renderScorecard() {
 
     html += `<tr class="${rowClass}${divClass}">
       <td class="pname-cell">${p.name}</td>
-      <td class="hdcp-cell">${ch !== null ? ch : (ns > 0 ? `<span style="color:var(--muted);font-size:10px">calc ${ns}</span>` : '—')}</td>
+      <td class="hdcp-cell">${ch !== null ? ch : '—'}</td>
       ${tds}
       <td class="net-cell">${netCount>0?netTotal:'—'}</td>
     </tr>`;

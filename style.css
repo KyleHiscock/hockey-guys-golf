@@ -1273,3 +1273,41 @@ body{font-family:'Barlow',sans-serif;background:var(--dark);color:var(--text);mi
 .admin-control-note{color:var(--muted);font-weight:700;line-height:1.45;background:rgba(159,201,220,.055);border:1px solid rgba(159,201,220,.14);border-radius:16px;padding:14px 16px;}
 @media(max-width:900px){.admin-control-hero{flex-direction:column;align-items:flex-start}.admin-quick-grid,.admin-status-grid{grid-template-columns:repeat(2,minmax(0,1fr));}.admin-control-primary{width:100%;}}
 @media(max-width:560px){.admin-quick-grid,.admin-status-grid{grid-template-columns:1fr}.admin-status-line{text-align:left}.admin-control-hero{padding:18px}.admin-control-hero h2{font-size:21px;}}
+
+
+/* ── V4.9.23 Clean Manual Stroke / Net HDCP Entry ── */
+.score-entry-card .field-input,
+.score-entry-card .field-select { margin-bottom:0; }
+.player-entry-grid{
+  display:grid;
+  grid-template-columns:minmax(180px,1.7fr) minmax(92px,.65fr) minmax(112px,.75fr) minmax(100px,.7fr);
+  gap:10px;
+  align-items:end;
+  margin-top:10px;
+}
+.player-entry-head{
+  margin-top:14px;
+  margin-bottom:-2px;
+  font-family:'Barlow Condensed',sans-serif;
+  font-size:10px;
+  font-weight:800;
+  letter-spacing:1.8px;
+  text-transform:uppercase;
+  color:var(--muted);
+}
+.mobile-only-label{display:none;}
+.absent-row-clean{margin-top:12px;display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;}
+.absent-check-label{display:flex;align-items:center;gap:8px;font-family:'Barlow Condensed',sans-serif;font-size:12px;letter-spacing:1px;color:var(--muted);cursor:pointer;}
+.absent-check-label input{width:14px;height:14px;accent-color:var(--gold);cursor:pointer;}
+.sub-fields-clean{width:100%;padding:12px;margin-top:4px;border:1px solid rgba(216,179,93,.18);border-radius:12px;background:rgba(216,179,93,.04);}
+.sub-title-clean{font-family:'Barlow Condensed',sans-serif;font-size:11px;letter-spacing:1.5px;color:var(--gold);text-transform:uppercase;margin-bottom:8px;}
+.score-entry-help p{font-family:'Barlow Condensed',sans-serif;font-size:13px;line-height:1.45;color:var(--muted);letter-spacing:.5px;margin:0;}
+.score-entry-help b{color:var(--gold);}
+@media (max-width:760px){
+  .player-entry-grid{grid-template-columns:1fr 1fr;gap:9px;}
+  .player-entry-head{display:none;}
+  .mobile-only-label{display:block;}
+}
+@media (max-width:460px){
+  .player-entry-grid{grid-template-columns:1fr;}
+}
