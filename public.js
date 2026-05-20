@@ -1560,7 +1560,9 @@ function calcDisplayedResultFromSnapshot(r) {
   var holes = side === 'front' ? COURSE.front : COURSE.back;
   var strokes = calcPlayerStrokes(snap, side);
   var strokeSets = snap.map(function(p, i) { return getStrokeHoles(strokes[i], holes); });
-  var status = 0;
+
+  var officialStatus = 0;
+  var liveStatus = 0;
   var holesWithScores = 0;
   var matchOver = false;
   var matchOverResult = '';
@@ -1568,11 +1570,13 @@ function calcDisplayedResultFromSnapshot(r) {
 
   for (var hi = 0; hi < holes.length; hi++) {
     var h = holes[hi];
+
     var t1nets = [0,1].map(function(pi) {
       var g = getScoreForPlayerHole(scores, snap[pi], pi, h.hole);
       if (g === null || isNaN(g)) return null;
       return g - holeStrokeCount(strokeSets[pi], h.hole);
     }).filter(function(v) { return v !== null; });
+
     var t2nets = [2,3].map(function(pi) {
       var g = getScoreForPlayerHole(scores, snap[pi], pi, h.hole);
       if (g === null || isNaN(g)) return null;
@@ -1580,25 +1584,53 @@ function calcDisplayedResultFromSnapshot(r) {
     }).filter(function(v) { return v !== null; });
 
     if (!t1nets.length || !t2nets.length) continue;
+
     holesWithScores++;
+
     var t1best = Math.min.apply(null, t1nets);
     var t2best = Math.min.apply(null, t2nets);
-    if (t1best < t2best) status++;
-    else if (t2best < t1best) status--;
+    var holeDelta = t1best < t2best ? 1 : (t2best < t1best ? -1 : 0);
+
+    officialStatus += holeDelta;
 
     if (!matchOver) {
+      liveStatus += holeDelta;
       var holesLeft = holes.length - (hi + 1);
-      if (holesLeft > 0 && Math.abs(status) > holesLeft) {
+
+      if (holesLeft > 0 && Math.abs(liveStatus) > holesLeft) {
         matchOver = true;
-        lockedWinnerStatus = status;
-        matchOverResult = Math.abs(status) + '&' + holesLeft;
+        lockedWinnerStatus = liveStatus;
+        matchOverResult = Math.abs(liveStatus) + '&' + holesLeft;
       }
     }
   }
 
-  // Official match-play display: once a match is mathematically closed, keep
-  // that label (5&4, 3&2, etc.) even if all 9 holes were later entered for
-  // hole-won standings totals. If it never closed early, show final UP margin.
+  // Full 9-hole card entered: official final status controls display.
+  // If AS after 9, keep the saved winner/tiebreaker but visibly show AS.
+  if (holesWithScores === holes.length) {
+    if (officialStatus === 0) {
+      var saved = String(r.matchResult || r.MatchResult || r['Result Text'] || 'TB · Tiebreaker');
+      var clean = saved.replace(/^AS\s*[·\-:]\s*/i, '');
+      var label = clean.indexOf('TB') === 0 ? clean : ('TB · ' + clean);
+      label = label.replace('TB · ', 'TB ');
+      return {
+        matchResult: 'AS · ' + label,
+        winner: r.winner || null,
+        matchStatus: 0,
+        holesWithScores: holesWithScores,
+        isAllSquareAfterNine: true
+      };
+    }
+
+    return {
+      matchResult: Math.abs(officialStatus) + ' UP',
+      winner: officialStatus > 0 ? r.team1 : r.team2,
+      matchStatus: officialStatus,
+      holesWithScores: holesWithScores
+    };
+  }
+
+  // Only incomplete/live cards should use early-close display.
   if (matchOver && matchOverResult) {
     return {
       matchResult: matchOverResult,
@@ -1608,13 +1640,7 @@ function calcDisplayedResultFromSnapshot(r) {
     };
   }
 
-  if (holesWithScores !== holes.length || status === 0) return null;
-  return {
-    matchResult: Math.abs(status) + ' UP',
-    winner: status > 0 ? r.team1 : r.team2,
-    matchStatus: status,
-    holesWithScores: holesWithScores
-  };
+  return null;
 }
 
 function getDisplayedResultInfo(r) {
@@ -3004,228 +3030,4 @@ function buildExtras() {
     html += '</div>';
   }
   container.innerHTML = html;
-}
-
-
-/* ─────────────────────────────────────────────────────────────────────────────
-   HGGL v4.9.24 stability patch
-   - True JSONP Google Sheets sync for mobile/desktop consistency
-   - Recalculates records/holes won from Results after every data pull
-   - Fixes cached-browser standings showing 0-0 after results exist
-   - Broadens Skins/CTP data mapping
-   ───────────────────────────────────────────────────────────────────────────── */
-
-function hgglNormalizeTeamKey_(name) {
-  return normalizeTeamName(String(name || '').trim());
-}
-
-function hgglCurrentTeamBase_() {
-  var current = (Array.isArray(TEAMS) && TEAMS.length ? TEAMS : DEFAULT_TEAMS);
-  return current.map(function(t) {
-    return Object.assign({}, t, {
-      name: hgglNormalizeTeamKey_(t.name),
-      w: 0,
-      l: 0,
-      holesWon: 0,
-      holesLost: 0,
-      holeDiff: 0,
-      matches: 0
-    });
-  });
-}
-
-function recalcRecordsFromResults() {
-  var base = hgglCurrentTeamBase_();
-  var byName = {};
-  base.forEach(function(t) { byName[hgglNormalizeTeamKey_(t.name)] = t; });
-
-  (Array.isArray(RESULTS) ? RESULTS : []).forEach(function(r) {
-    var team1 = hgglNormalizeTeamKey_(r.team1 || r.Team1 || r['Team 1']);
-    var team2 = hgglNormalizeTeamKey_(r.team2 || r.Team2 || r['Team 2']);
-    var winner = hgglNormalizeTeamKey_(r.winner || r.Winner);
-    if (!team1 || !team2) return;
-
-    if (!byName[team1]) byName[team1] = { name: team1, players: '', w:0, l:0, holesWon:0, holesLost:0, holeDiff:0, matches:0 };
-    if (!byName[team2]) byName[team2] = { name: team2, players: '', w:0, l:0, holesWon:0, holesLost:0, holeDiff:0, matches:0 };
-
-    var t1 = byName[team1];
-    var t2 = byName[team2];
-    var t1Holes = Number(r.team1HolesWon || (r.holesWon && r.holesWon.team1) || r['Team 1 Holes Won'] || r.Team1HolesWon || 0) || 0;
-    var t2Holes = Number(r.team2HolesWon || (r.holesWon && r.holesWon.team2) || r['Team 2 Holes Won'] || r.Team2HolesWon || 0) || 0;
-
-    t1.matches = (Number(t1.matches) || 0) + 1;
-    t2.matches = (Number(t2.matches) || 0) + 1;
-    t1.holesWon = (Number(t1.holesWon) || 0) + t1Holes;
-    t1.holesLost = (Number(t1.holesLost) || 0) + t2Holes;
-    t2.holesWon = (Number(t2.holesWon) || 0) + t2Holes;
-    t2.holesLost = (Number(t2.holesLost) || 0) + t1Holes;
-
-    if (winner && winner === team1) { t1.w = (Number(t1.w) || 0) + 1; t2.l = (Number(t2.l) || 0) + 1; }
-    else if (winner && winner === team2) { t2.w = (Number(t2.w) || 0) + 1; t1.l = (Number(t1.l) || 0) + 1; }
-    else { t1.w = (Number(t1.w) || 0) + 0.5; t2.w = (Number(t2.w) || 0) + 0.5; }
-  });
-
-  TEAMS = Object.values(byName).map(function(t) {
-    t.holeDiff = (Number(t.holesWon) || 0) - (Number(t.holesLost) || 0);
-    return t;
-  });
-}
-
-function loadState() {
-  try {
-    var raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return;
-    var parsed = JSON.parse(raw);
-    if (Array.isArray(parsed.results)) RESULTS = parsed.results;
-    if (Array.isArray(parsed.teams)) {
-      TEAMS = DEFAULT_TEAMS.map(function(def) {
-        var cached = parsed.teams.find(function(t) { return hgglNormalizeTeamKey_(t.name) === hgglNormalizeTeamKey_(def.name); }) || {};
-        return Object.assign({}, def, cached, { name: hgglNormalizeTeamKey_(cached.name || def.name) });
-      });
-    }
-    recalcRecordsFromResults();
-    if (parsed.savedAt) {
-      try {
-        LEAGUE_DATA_SOURCE = 'Cached Browser Copy';
-        LEAGUE_DATA_LAST_LOADED = new Date(parsed.savedAt).toLocaleString('en-US', { timeZone: 'America/New_York' });
-      } catch(e) { LEAGUE_DATA_LAST_LOADED = String(parsed.savedAt); }
-    }
-    if (typeof parsed.commissionerNote === 'string' && parsed.commissionerNote.trim()) {
-      localStorage.setItem('hggl2026_commissioner_note', parsed.commissionerNote);
-    }
-  } catch (err) {
-    console.warn('League data could not be loaded.', err);
-  }
-}
-
-function hgglRowsFromData_(data, keys) {
-  for (var i = 0; i < keys.length; i++) {
-    var v = data && data[keys[i]];
-    if (Array.isArray(v)) return v;
-  }
-  return [];
-}
-
-function applySkinsCtpFromSheet(data) {
-  var skins = hgglRowsFromData_(data || {}, ['skins','Skins','netSkins','NetSkins','net_skins']);
-  var ctp = hgglRowsFromData_(data || {}, ['ctp','CTP','closestToPin','ClosestToPin','closest_to_pin']);
-  var combined = hgglRowsFromData_(data || {}, ['extras','Extras','skinsCtp','SkinsCTP','skinsAndCtp','SkinsAndCTP']);
-
-  if (combined.length) {
-    combined.forEach(function(r) {
-      var type = String(r.Type || r.Category || r.Event || r._type || '').toLowerCase();
-      if (type.indexOf('ctp') >= 0 || type.indexOf('closest') >= 0) ctp.push(r);
-      else if (type.indexOf('skin') >= 0 || r.Skins || r.TotalPot) skins.push(r);
-    });
-  }
-
-  SKINS_DATA = skins.filter(function(r) { return r && (r.Week || r.week) && (r.Player || r.player); })
-    .map(function(r) { return Object.assign({}, r, { Week: r.Week || r.week, Player: r.Player || r.player }); });
-  CTP_DATA = ctp.filter(function(r) { return r && (r.Week || r.week) && (r.Player || r.player); })
-    .map(function(r) { return Object.assign({}, r, { Week: r.Week || r.week, Player: r.Player || r.player }); });
-}
-
-function applyLeagueDataFromSheet(data) {
-  LEAGUE_API_DATA = data || {};
-  TEAMS = buildTeamsFromSheet(LEAGUE_API_DATA);
-
-  if (LEAGUE_API_DATA.schedule && LEAGUE_API_DATA.schedule.length) {
-    var builtWeeks = buildScheduleFromSheet(LEAGUE_API_DATA);
-    if (builtWeeks && builtWeeks.length) SCHEDULE_WEEKS = builtWeeks;
-  }
-
-  RESULTS = (LEAGUE_API_DATA.results || [])
-    .map(normalizeResultFromSheet)
-    .filter(function(r) { return r.week && r.team1 && r.team2; });
-
-  // Critical: public standings/power rankings should be driven by Results, not a stale Standings sheet.
-  recalcRecordsFromResults();
-
-  if (LEAGUE_API_DATA.commissionerNote !== undefined && LEAGUE_API_DATA.commissionerNote !== null) {
-    localStorage.setItem('hggl2026_commissioner_note', String(LEAGUE_API_DATA.commissionerNote));
-  }
-
-  applySkinsCtpFromSheet(LEAGUE_API_DATA);
-  if (typeof applyAttendanceFromSheet === 'function') applyAttendanceFromSheet(LEAGUE_API_DATA);
-  if (typeof applyHandicapFromSheet === 'function') applyHandicapFromSheet(LEAGUE_API_DATA);
-
-  LEAGUE_DATA_SOURCE = 'Google Sheets';
-  LEAGUE_DATA_LAST_LOADED = new Date().toLocaleString('en-US', { timeZone: 'America/New_York' });
-
-  function refreshExtraCards() {
-    if (typeof applyAttendanceFromSheet === 'function') applyAttendanceFromSheet(LEAGUE_API_DATA);
-    if (typeof applyHandicapFromSheet === 'function') applyHandicapFromSheet(LEAGUE_API_DATA);
-    var attCard = document.getElementById('bar-attendance-card');
-    if (attCard && typeof buildAttendanceCardHTML === 'function') {
-      attCard.innerHTML = '<div class="dash-label">🍺 Bar Attendance</div>' + buildAttendanceCardHTML();
-    }
-    var hcpCard = document.getElementById('handicap-tracker-card');
-    if (hcpCard && typeof buildHandicapCardHTML === 'function') {
-      hcpCard.innerHTML = '<div class="dash-label">📊 Handicap Tracker</div>' + buildHandicapCardHTML();
-    }
-  }
-  refreshExtraCards();
-  setTimeout(refreshExtraCards, 800);
-}
-
-async function leagueJsonpRequest(action, payload) {
-  payload = payload || {};
-  if (!LEAGUE_API_URL) throw new Error('Missing Google Sheets API URL.');
-
-  return new Promise(function(resolve, reject) {
-    var callbackName = 'hgglJsonp_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
-    var script = document.createElement('script');
-    var finished = false;
-
-    function cleanup() {
-      if (finished) return;
-      finished = true;
-      try { delete window[callbackName]; } catch(e) { window[callbackName] = undefined; }
-      if (script && script.parentNode) script.parentNode.removeChild(script);
-    }
-
-    var timer = setTimeout(function() {
-      cleanup();
-      reject(new Error('Request timed out.'));
-    }, 25000);
-
-    window[callbackName] = function(json) {
-      clearTimeout(timer);
-      cleanup();
-      if (!json || json.ok === false) reject(new Error((json && json.error) || 'API error'));
-      else resolve(json);
-    };
-
-    script.onerror = function() {
-      clearTimeout(timer);
-      cleanup();
-      reject(new Error('Google Sheets script failed to load.'));
-    };
-
-    var params = new URLSearchParams();
-    params.set('action', action);
-    params.set('callback', callbackName);
-    params.set('v', String(Date.now()));
-    if (payload && Object.keys(payload).length) params.set('payload', JSON.stringify(payload));
-    script.src = LEAGUE_API_URL + '?' + params.toString();
-    document.body.appendChild(script);
-  });
-}
-
-
-function fetchLeagueDataFromSheets(silent) {
-  silent = !!silent;
-  if (!USE_GOOGLE_SHEETS_SYNC || !LEAGUE_API_URL) return Promise.resolve(false);
-  return leagueJsonpRequest('getLeagueData').then(function(json) {
-    applyLeagueDataFromSheet(json.data || {});
-    persistState();
-    rebuildAll();
-    if (typeof initCommissionerNoteEditor === 'function') initCommissionerNoteEditor();
-    return true;
-  }).catch(function(err) {
-    console.warn('Google Sheets sync failed; using local fallback.', err);
-    LEAGUE_DATA_SOURCE = 'local fallback';
-    if (!silent) alert('Could not load Google Sheets data. The site is using the local backup for now.');
-    return false;
-  });
 }
