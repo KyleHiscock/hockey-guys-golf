@@ -134,6 +134,16 @@ function roundHandicapAllowance(value) {
   return Math.round((Number(value) || 0) + 1e-9);
 }
 
+function getManualStrokeNumber(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const n = parseInt(value, 10);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+function playerIsActiveForStrokes(player) {
+  return !!(player && !player.isAbsent && String(player.name || '').trim());
+}
+
 function nineHoleHdcp(ghinIndex, side) {
   const full18Rounded = courseHandicap18Rounded(ghinIndex);
   if (full18Rounded === null) return null;
@@ -150,7 +160,24 @@ function nineHoleHdcpRaw(ghinIndex) {
 // Relative match-play strokes only.
 // Individual stat/net totals use calcPlayerStatStrokes() below instead.
 function calcPlayerStrokes(players, side) {
-  const hdcps = players.map(p => {
+  // Match-play dots/hole wins should use the weekly Squabbit Match Strokes
+  // saved in the result snapshot. Only fall back to the old GHIN calculation
+  // for older saved rows that have no manual match-stroke data at all.
+  const activePlayers = (players || []).filter(playerIsActiveForStrokes);
+  const hasManualMatchStrokes = activePlayers.some(function(p) {
+    return getManualStrokeNumber(p.manualStrokes ?? p.matchStrokes ?? p.strokesReceived ?? p.StrokesReceived) !== null;
+  });
+
+  if (hasManualMatchStrokes) {
+    return (players || []).map(function(p) {
+      if (!playerIsActiveForStrokes(p)) return 0;
+      const n = getManualStrokeNumber(p.manualStrokes ?? p.matchStrokes ?? p.strokesReceived ?? p.StrokesReceived);
+      return n === null ? 0 : n;
+    });
+  }
+
+  // Legacy fallback for results saved before manual Match Strokes existed.
+  const hdcps = (players || []).map(p => {
     if (p.isAbsent || !p.name || !p.name.trim()) return null;
     return nineHoleHdcp(p.ghin, side);
   });
@@ -163,8 +190,13 @@ function calcPlayerStrokes(players, side) {
 // This uses the player's own 9-hole GHIN-style handicap before any relative
 // match-play comparison/90% allowance.
 function calcPlayerStatStrokes(players, side) {
-  return players.map(p => {
+  // Actual net-score handicap for tiebreakers, net stats, and low-net leaders.
+  // If Net HDCP was copied from Squabbit and saved, use it exactly.
+  // Match Strokes are relative match-play strokes and should not drive these totals.
+  return (players || []).map(p => {
     if (p.isAbsent || !p.name || !p.name.trim()) return 0;
+    const manualNet = getManualStrokeNumber(p.netStrokes ?? p.actualNetStrokes ?? p.squabbitNetStrokes ?? p.NetStrokes ?? p.netHdcp ?? p.NetHDCP);
+    if (manualNet !== null) return manualNet;
     const h = nineHoleHdcp(p.ghin, side);
     return h !== null ? Math.max(0, h) : 0;
   });
@@ -381,6 +413,29 @@ function normalizeSnapshotPlayer(raw, index, row) {
   const team1 = normalizeTeamName(getRowValue(row, ['Team1', 'Team 1', 'team1']));
   const team2 = normalizeTeamName(getRowValue(row, ['Team2', 'Team 2', 'team2']));
   const sideTeam = index < 2 ? team1 : team2;
+
+  const matchStrokeKeys = [
+    'P' + playerNo + 'Strokes', 'P' + playerNo + ' Strokes',
+    'P' + playerNo + 'MatchStrokes', 'P' + playerNo + ' Match Strokes',
+    'Player' + playerNo + 'Strokes', 'Player ' + playerNo + ' Strokes',
+    'Player ' + playerNo + ' Strokes Received', 'Player ' + playerNo + ' Match Strokes'
+  ];
+  const netStrokeKeys = [
+    'P' + playerNo + 'NetStrokes', 'P' + playerNo + ' Net Strokes',
+    'P' + playerNo + 'NetHDCP', 'P' + playerNo + ' Net HDCP',
+    'Player' + playerNo + 'NetStrokes', 'Player ' + playerNo + ' Net Strokes',
+    'Player ' + playerNo + ' Net HDCP', 'Player ' + playerNo + ' Net Handicap'
+  ];
+
+  const matchStrokeValue = getManualStrokeNumber(
+    raw.manualStrokes ?? raw.matchStrokes ?? raw.strokesReceived ?? raw.StrokesReceived ??
+    raw.MatchStrokes ?? raw['Match Strokes'] ?? getRowValue(row, matchStrokeKeys)
+  );
+  const netStrokeValue = getManualStrokeNumber(
+    raw.netStrokes ?? raw.actualNetStrokes ?? raw.squabbitNetStrokes ?? raw.NetStrokes ??
+    raw.NetHDCP ?? raw['Net HDCP'] ?? raw.netHdcp ?? getRowValue(row, netStrokeKeys)
+  );
+
   return {
     id: raw.id || raw.playerId || raw.key || fallbackIds[index],
     playerId: raw.playerId || raw.id || fallbackIds[index],
@@ -392,7 +447,16 @@ function normalizeSnapshotPlayer(raw, index, row) {
     ]),
     team: normalizeTeamName(raw.team || raw.Team || getRowValue(row, [
       'P' + playerNo + 'Team', 'P' + playerNo + ' Team', 'Player' + playerNo + 'Team', 'Player ' + playerNo + ' Team'
-    ]) || sideTeam)
+    ]) || sideTeam),
+    manualStrokes: matchStrokeValue,
+    matchStrokes: matchStrokeValue,
+    strokesReceived: matchStrokeValue,
+    netStrokes: netStrokeValue,
+    actualNetStrokes: netStrokeValue,
+    squabbitNetStrokes: netStrokeValue,
+    isSub: !!(raw.isSub || raw.sub),
+    isAbsent: !!(raw.isAbsent || raw.absent),
+    absentPlayer: raw.absentPlayer || raw.AbsentPlayer || ''
   };
 }
 
