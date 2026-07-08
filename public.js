@@ -97,7 +97,7 @@ let RESULTS = [];
 var SKINS_DATA = [];
 var CTP_DATA = [];
 const STORAGE_KEY = 'hggl_2026_state_v2';
-const HGL_FRONTEND_VERSION = 'v4.9.33-compact-leaderboards';
+const HGL_FRONTEND_VERSION = 'v4.9.34-current-form-records';
 try { console.log('Hockey Guys Golf League frontend ' + HGL_FRONTEND_VERSION); } catch(e) {}
 let currentUser = null;
 let scorecardScores = {};  // "pid_hole" -> gross score string
@@ -1378,8 +1378,141 @@ function renderFullSeasonLeaderboardsSection(playerStats) {
     '</div></div>';
 }
 
+
+function sortPlayerRoundHistory(player) {
+  return (player.roundHistory || []).slice().sort(function(a,b){
+    var aw = parseInt(a.week, 10) || 0;
+    var bw = parseInt(b.week, 10) || 0;
+    if (aw !== bw) return aw - bw;
+    return String(a.side || '').localeCompare(String(b.side || ''));
+  });
+}
+
+function summarizeRecentForm(player, count) {
+  var rounds = sortPlayerRoundHistory(player).filter(function(r){ return r && r.holes > 0; });
+  var recent = rounds.slice(-1 * (count || 3));
+  if (!recent.length) return null;
+  var gross = recent.reduce(function(sum,r){ return sum + (parseFloat(r.gross) || 0); }, 0);
+  var net = recent.reduce(function(sum,r){ return sum + (parseFloat(r.net) || 0); }, 0);
+  var wins = recent.filter(function(r){ return r.result === 'W'; }).length;
+  var losses = recent.filter(function(r){ return r.result === 'L'; }).length;
+  var ties = recent.filter(function(r){ return r.result === 'T'; }).length;
+  return {
+    rounds: recent,
+    count: recent.length,
+    grossAvg: gross / recent.length,
+    netAvg: net / recent.length,
+    record: wins + '-' + losses + (ties ? '-' + ties : '')
+  };
+}
+
+function renderPlayerCurrentFormMini(player) {
+  var form = summarizeRecentForm(player, 3);
+  if (!form) return '';
+  return '<div class="psc-form-mini">' +
+    '<div class="psc-form-title">Current Form <span>Last ' + form.count + '</span></div>' +
+    '<div class="psc-form-grid">' +
+      '<div><b>' + form.grossAvg.toFixed(1) + '</b><span>Gross Avg</span></div>' +
+      '<div><b>' + form.netAvg.toFixed(1) + '</b><span>Net Avg</span></div>' +
+      '<div><b>' + form.record + '</b><span>Match Form</span></div>' +
+    '</div>' +
+    '<div class="psc-form-rounds">' + form.rounds.map(function(r){
+      return '<span>Wk ' + escapeLeagueHtml(r.week || '') + ': ' + (r.gross || '—') + ' / ' + (r.net || '—') + ' ' + escapeLeagueHtml(r.result || '') + '</span>';
+    }).join('') + '</div>' +
+  '</div>';
+}
+
+function renderCurrentFormSection(playerStats) {
+  var rows = Object.values(playerStats || {}).filter(function(p){
+    return p.roundsPlayed > 0 && isOfficialRosterPlayerName(p.name);
+  }).map(function(p){
+    var form = summarizeRecentForm(p, 3);
+    return form ? { player:p, form:form } : null;
+  }).filter(Boolean).sort(function(a,b){
+    var diff = a.form.netAvg - b.form.netAvg;
+    if (Math.abs(diff) > 0.0001) return diff;
+    diff = a.form.grossAvg - b.form.grossAvg;
+    if (Math.abs(diff) > 0.0001) return diff;
+    return a.player.name.localeCompare(b.player.name);
+  }).slice(0, 6);
+
+  if (!rows.length) return '';
+
+  return '<div class="analytics-section current-form-section">' +
+    '<div class="analytics-title">Current Form</div>' +
+    '<div class="analytics-note">Top recent performers by last 3-round net average. One or two rounds are shown until a player has three posted rounds.</div>' +
+    '<div class="current-form-grid">' + rows.map(function(row, i){
+      return '<div class="current-form-card' + (i === 0 ? ' leader' : '') + '">' +
+        '<div class="current-form-rank">' + (i + 1) + '</div>' +
+        '<div class="current-form-player"><b>' + escapeLeagueHtml(row.player.name) + '</b><span>' + escapeLeagueHtml(row.player.team || '') + '</span></div>' +
+        '<div class="current-form-metrics">' +
+          '<div><b>' + row.form.netAvg.toFixed(1) + '</b><span>Net</span></div>' +
+          '<div><b>' + row.form.grossAvg.toFixed(1) + '</b><span>Gross</span></div>' +
+          '<div><b>' + row.form.record + '</b><span>Form</span></div>' +
+        '</div>' +
+      '</div>';
+    }).join('') + '</div></div>';
+}
+
+function flattenCompletePlayerRounds(playerStats) {
+  var rounds = [];
+  Object.values(playerStats || {}).forEach(function(p){
+    if (!isOfficialRosterPlayerName(p.name)) return;
+    (p.roundHistory || []).forEach(function(r){
+      if (!r || (parseInt(r.holes, 10) || 0) < 9) return;
+      rounds.push({
+        player: p.name,
+        team: p.team,
+        week: r.week,
+        side: r.side,
+        gross: parseFloat(r.gross),
+        net: parseFloat(r.net),
+        grossBirdies: parseInt(r.grossBirdies, 10) || 0,
+        netBirdies: parseInt(r.netBirdies, 10) || 0
+      });
+    });
+  });
+  return rounds;
+}
+
+function renderLeagueRecordsSection(playerStats) {
+  var rounds = flattenCompletePlayerRounds(playerStats);
+  if (!rounds.length) return '';
+
+  function pickRecord(title, icon, valueFn, formatFn, highWins) {
+    var valid = rounds.filter(function(r){
+      var v = valueFn(r);
+      return v !== null && v !== undefined && Number.isFinite(v);
+    });
+    if (!valid.length) return '';
+    valid.sort(function(a,b){
+      var av = valueFn(a), bv = valueFn(b);
+      var diff = highWins ? (bv - av) : (av - bv);
+      if (Math.abs(diff) > 0.0001) return diff;
+      return (parseInt(a.week, 10) || 0) - (parseInt(b.week, 10) || 0);
+    });
+    var r = valid[0];
+    return '<div class="league-record-card">' +
+      '<div class="league-record-icon">' + icon + '</div>' +
+      '<div class="league-record-copy"><span>' + title + '</span><b>' + formatFn(valueFn(r)) + '</b><em>' + escapeLeagueHtml(r.player) + ' · Week ' + escapeLeagueHtml(r.week || '') + '</em></div>' +
+    '</div>';
+  }
+
+  return '<div class="analytics-section league-records-section">' +
+    '<div class="analytics-title">League Records</div>' +
+    '<div class="analytics-note">Single-round records from completed 9-hole roster-player rounds only.</div>' +
+    '<div class="league-records-grid">' +
+      pickRecord('Lowest Gross Round', '⭐', function(r){ return r.gross; }, function(v){ return v; }, false) +
+      pickRecord('Lowest Net Round', '🎯', function(r){ return r.net; }, function(v){ return v; }, false) +
+      pickRecord('Gross Birdies in a Round', '🐦', function(r){ return r.grossBirdies; }, function(v){ return v; }, true) +
+      pickRecord('Net Birdies in a Round', '🔥', function(r){ return r.netBirdies; }, function(v){ return v; }, true) +
+    '</div></div>';
+}
+
 function renderStatsAnalyticsSections(playerStats) {
-  return renderFullSeasonLeaderboardsSection(playerStats) +
+  return renderCurrentFormSection(playerStats) +
+    renderLeagueRecordsSection(playerStats) +
+    renderFullSeasonLeaderboardsSection(playerStats) +
     '<div class="analytics-section"><div class="analytics-title">Team Best-Ball Average</div>' + renderTeamBestBallCard() + '</div>' +
     renderScoringRatesSection(playerStats);
 }
@@ -2619,7 +2752,8 @@ function computePlayerStats() {
           netBogeys: 0,
           netDoubles: 0,
           netWorse: 0,
-          holeScores: {}
+          holeScores: {},
+          roundHistory: []
         };
       }
       var ps = players[p.name];
@@ -2639,6 +2773,9 @@ function computePlayerStats() {
       var grossTotal = 0;
       var netTotal = 0;
       var holeCount = 0;
+      var roundGrossBirdies = 0;
+      var roundNetBirdies = 0;
+      var roundPars = 0;
       holes.forEach(function(h) {
         var gross = getScoreForPlayerHole(scores, p, playerIndex, h.hole);
         if (gross === null || isNaN(gross)) return;
@@ -2655,13 +2792,13 @@ function computePlayerStats() {
         ps.totalHoles++;
         ps.parDiffs.push(grossDiff);
 
-        if (grossDiff <= -1) ps.birdies++;
-        else if (grossDiff === 0) ps.pars++;
+        if (grossDiff <= -1) { ps.birdies++; roundGrossBirdies++; }
+        else if (grossDiff === 0) { ps.pars++; roundPars++; }
         else if (grossDiff === 1) ps.bogeys++;
         else if (grossDiff === 2) ps.doubles++;
         else ps.worse++;
 
-        if (netDiff <= -1) ps.netBirdies++;
+        if (netDiff <= -1) { ps.netBirdies++; roundNetBirdies++; }
         else if (netDiff === 0) ps.netPars++;
         else if (netDiff === 1) ps.netBogeys++;
         else if (netDiff === 2) ps.netDoubles++;
@@ -2676,6 +2813,17 @@ function computePlayerStats() {
         if (grossTotal > ps.worstGross) ps.worstGross = grossTotal;
         if (ps.bestNet === undefined || netTotal < ps.bestNet) ps.bestNet = netTotal;
         if (ps.worstNet === undefined || netTotal > ps.worstNet) ps.worstNet = netTotal;
+        ps.roundHistory.push({
+          week: parseInt(result.week, 10) || result.week || '',
+          side: result.side || '',
+          gross: grossTotal,
+          net: netTotal,
+          holes: holeCount,
+          grossBirdies: roundGrossBirdies,
+          netBirdies: roundNetBirdies,
+          pars: roundPars,
+          result: p.won ? 'W' : (p.lost ? 'L' : 'T')
+        });
       }
     });
   });
@@ -2779,6 +2927,7 @@ function buildStats() {
       {label:'+2',cls:'double',val:p.doubles},
       {label:'+3',cls:'worse',val:p.worse},
     ];
+    const formMiniHtml = renderPlayerCurrentFormMini(p);
     const distHtml = p.totalHoles>0 ? (
       '<div class="score-dist-wrap">' +
       '<div class="score-dist-title">Score Distribution</div>' +
@@ -2822,6 +2971,7 @@ function buildStats() {
           '<div class="psc-detail-item"><span class="psc-detail-label">Bogeys</span><span class="psc-detail-val">' + p.bogeys + '</span></div>' +
           '<div class="psc-detail-item"><span class="psc-detail-label">Double+</span><span class="psc-detail-val" style="color:var(--red)">' + (p.doubles+p.worse) + '</span></div>' +
         '</div>' +
+        formMiniHtml +
         distHtml +
       '</div>' +
     '</div>';
