@@ -97,7 +97,7 @@ let RESULTS = [];
 var SKINS_DATA = [];
 var CTP_DATA = [];
 const STORAGE_KEY = 'hggl_2026_state_v2';
-const HGL_FRONTEND_VERSION = 'v4.9.31-sub-slots-stats-leaderboards';
+const HGL_FRONTEND_VERSION = 'v4.9.32-gross-birdies-leaderboards';
 try { console.log('Hockey Guys Golf League frontend ' + HGL_FRONTEND_VERSION); } catch(e) {}
 let currentUser = null;
 let scorecardScores = {};  // "pid_hole" -> gross score string
@@ -1326,12 +1326,13 @@ function getFullSeasonLeaderboardPlayers(playerStats) {
       holes: p.totalHoles || 0,
       grossAvg: p.roundsPlayed ? (p.totalGross / p.roundsPlayed) : null,
       netAvg: p.roundsPlayed ? (p.totalNet / p.roundsPlayed) : null,
-      netBirdies: p.netBirdies || 0
+      netBirdies: p.netBirdies || 0,
+      grossBirdies: p.birdies || 0
     };
   });
 }
 
-function renderFullSeasonLeaderboardBoard(title, rows, valueFn, formatFn, lowWins) {
+function renderFullSeasonLeaderboardBoard(title, rows, valueFn, formatFn, lowWins, valueLabel) {
   if (!rows.length) return '';
   var sorted = rows.slice().sort(function(a,b){
     var av = valueFn(a), bv = valueFn(b);
@@ -1359,7 +1360,7 @@ function renderFullSeasonLeaderboardBoard(title, rows, valueFn, formatFn, lowWin
   }).join('');
 
   return '<div class="season-board"><div class="rate-title">' + title + '</div>' +
-    '<table class="season-leaderboard-table"><thead><tr><th>#</th><th style="text-align:left">Player</th><th>Rds</th><th>Holes</th><th>Value</th></tr></thead><tbody>' +
+    '<table class="season-leaderboard-table"><thead><tr><th>#</th><th style="text-align:left">Player</th><th>Rds</th><th>Holes</th><th>' + escapeLeagueHtml(valueLabel || 'Value') + '</th></tr></thead><tbody>' +
     body +
     '</tbody></table></div>';
 }
@@ -1370,9 +1371,10 @@ function renderFullSeasonLeaderboardsSection(playerStats) {
   return '<div class="analytics-section"><div class="analytics-title">Full Season Leaderboards</div>' +
     '<div class="analytics-note">These match the public Home page leader categories, expanded to every roster player with scores. Averages are per 9-hole round. Subs are excluded.</div>' +
     '<div class="analytics-grid season-leaderboards-grid">' +
-      renderFullSeasonLeaderboardBoard('Low Gross Avg', rows, function(p){ return p.grossAvg; }, function(v){ return v === null ? '—' : v.toFixed(1); }, true) +
-      renderFullSeasonLeaderboardBoard('Low Net Avg', rows, function(p){ return p.netAvg; }, function(v){ return v === null ? '—' : v.toFixed(1); }, true) +
-      renderFullSeasonLeaderboardBoard('Most Net Birdies', rows, function(p){ return p.netBirdies; }, function(v){ return v || 0; }, false) +
+      renderFullSeasonLeaderboardBoard('Low Gross Avg', rows, function(p){ return p.grossAvg; }, function(v){ return v === null ? '—' : v.toFixed(1); }, true, 'Avg') +
+      renderFullSeasonLeaderboardBoard('Low Net Avg', rows, function(p){ return p.netAvg; }, function(v){ return v === null ? '—' : v.toFixed(1); }, true, 'Avg') +
+      renderFullSeasonLeaderboardBoard('Most Gross Birdies', rows, function(p){ return p.grossBirdies; }, function(v){ return v || 0; }, false, 'Birdies') +
+      renderFullSeasonLeaderboardBoard('Most Net Birdies', rows, function(p){ return p.netBirdies; }, function(v){ return v || 0; }, false, 'Birdies') +
     '</div></div>';
 }
 
