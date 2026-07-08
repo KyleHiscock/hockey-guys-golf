@@ -97,7 +97,7 @@ let RESULTS = [];
 var SKINS_DATA = [];
 var CTP_DATA = [];
 const STORAGE_KEY = 'hggl_2026_state_v2';
-const HGL_FRONTEND_VERSION = 'v4.9.15-stability-audit';
+const HGL_FRONTEND_VERSION = 'v4.9.31-sub-slots-stats-leaderboards';
 try { console.log('Hockey Guys Golf League frontend ' + HGL_FRONTEND_VERSION); } catch(e) {}
 let currentUser = null;
 let scorecardScores = {};  // "pid_hole" -> gross score string
@@ -1314,8 +1314,71 @@ function renderPowerRankingsCard() {
   }).join('') + '<div class="power-note">Formula: record, holes won, hole differential, net team best-ball average, and recent form.</div></div>';
 }
 
+
+function getFullSeasonLeaderboardPlayers(playerStats) {
+  return Object.values(playerStats || {}).filter(function(p){
+    return p.roundsPlayed > 0 && isOfficialRosterPlayerName(p.name);
+  }).map(function(p){
+    return {
+      name: p.name,
+      team: p.team,
+      rounds: p.roundsPlayed || 0,
+      holes: p.totalHoles || 0,
+      grossAvg: p.roundsPlayed ? (p.totalGross / p.roundsPlayed) : null,
+      netAvg: p.roundsPlayed ? (p.totalNet / p.roundsPlayed) : null,
+      netBirdies: p.netBirdies || 0
+    };
+  });
+}
+
+function renderFullSeasonLeaderboardBoard(title, rows, valueFn, formatFn, lowWins) {
+  if (!rows.length) return '';
+  var sorted = rows.slice().sort(function(a,b){
+    var av = valueFn(a), bv = valueFn(b);
+    if (av === null && bv === null) return a.name.localeCompare(b.name);
+    if (av === null) return 1;
+    if (bv === null) return -1;
+    var diff = lowWins ? av - bv : bv - av;
+    if (Math.abs(diff) > 0.0001) return diff;
+    return b.holes - a.holes || a.name.localeCompare(b.name);
+  });
+
+  var lastValue = null;
+  var displayRank = 0;
+  var body = sorted.map(function(p, i){
+    var val = valueFn(p);
+    if (lastValue === null || Math.abs(val - lastValue) > 0.0001) displayRank = i + 1;
+    lastValue = val;
+    return '<tr' + (i === 0 ? ' class="season-leader-row"' : '') + '>' +
+      '<td class="season-rank">' + displayRank + '</td>' +
+      '<td class="season-player"><b>' + escapeLeagueHtml(p.name) + '</b><span>' + escapeLeagueHtml(p.team || '') + '</span></td>' +
+      '<td>' + p.rounds + '</td>' +
+      '<td>' + p.holes + '</td>' +
+      '<td class="season-value">' + formatFn(val) + '</td>' +
+    '</tr>';
+  }).join('');
+
+  return '<div class="season-board"><div class="rate-title">' + title + '</div>' +
+    '<table class="season-leaderboard-table"><thead><tr><th>#</th><th style="text-align:left">Player</th><th>Rds</th><th>Holes</th><th>Value</th></tr></thead><tbody>' +
+    body +
+    '</tbody></table></div>';
+}
+
+function renderFullSeasonLeaderboardsSection(playerStats) {
+  var rows = getFullSeasonLeaderboardPlayers(playerStats);
+  if (!rows.length) return '';
+  return '<div class="analytics-section"><div class="analytics-title">Full Season Leaderboards</div>' +
+    '<div class="analytics-note">These match the public Home page leader categories, expanded to every roster player with scores. Averages are per 9-hole round. Subs are excluded.</div>' +
+    '<div class="analytics-grid season-leaderboards-grid">' +
+      renderFullSeasonLeaderboardBoard('Low Gross Avg', rows, function(p){ return p.grossAvg; }, function(v){ return v === null ? '—' : v.toFixed(1); }, true) +
+      renderFullSeasonLeaderboardBoard('Low Net Avg', rows, function(p){ return p.netAvg; }, function(v){ return v === null ? '—' : v.toFixed(1); }, true) +
+      renderFullSeasonLeaderboardBoard('Most Net Birdies', rows, function(p){ return p.netBirdies; }, function(v){ return v || 0; }, false) +
+    '</div></div>';
+}
+
 function renderStatsAnalyticsSections(playerStats) {
-  return '<div class="analytics-section"><div class="analytics-title">Team Best-Ball Average</div>' + renderTeamBestBallCard() + '</div>' +
+  return renderFullSeasonLeaderboardsSection(playerStats) +
+    '<div class="analytics-section"><div class="analytics-title">Team Best-Ball Average</div>' + renderTeamBestBallCard() + '</div>' +
     renderScoringRatesSection(playerStats);
 }
 

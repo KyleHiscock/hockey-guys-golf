@@ -100,7 +100,7 @@ let RESULTS = [];
 var SKINS_DATA = [];
 var CTP_DATA = [];
 const STORAGE_KEY = 'hggl_2026_state_v2';
-const HGL_FRONTEND_VERSION = 'v4.9.17-commissioner-control';
+const HGL_FRONTEND_VERSION = 'v4.9.31-sub-slots-stats-leaderboards';
 try { console.log('Hockey Guys Golf League frontend ' + HGL_FRONTEND_VERSION); } catch(e) {}
 let currentUser = null;
 let scorecardScores = {};
@@ -1230,8 +1230,71 @@ function renderPowerRankingsCard() {
   }).join('') + '<div class="power-note">Formula: record, holes won, hole differential, net team best-ball average, and recent form.</div></div>';
 }
 
+
+function getFullSeasonLeaderboardPlayers(playerStats) {
+  return Object.values(playerStats || {}).filter(function(p){
+    return p.roundsPlayed > 0 && isOfficialRosterPlayerName(p.name);
+  }).map(function(p){
+    return {
+      name: p.name,
+      team: p.team,
+      rounds: p.roundsPlayed || 0,
+      holes: p.totalHoles || 0,
+      grossAvg: p.roundsPlayed ? (p.totalGross / p.roundsPlayed) : null,
+      netAvg: p.roundsPlayed ? (p.totalNet / p.roundsPlayed) : null,
+      netBirdies: p.netBirdies || 0
+    };
+  });
+}
+
+function renderFullSeasonLeaderboardBoard(title, rows, valueFn, formatFn, lowWins) {
+  if (!rows.length) return '';
+  var sorted = rows.slice().sort(function(a,b){
+    var av = valueFn(a), bv = valueFn(b);
+    if (av === null && bv === null) return a.name.localeCompare(b.name);
+    if (av === null) return 1;
+    if (bv === null) return -1;
+    var diff = lowWins ? av - bv : bv - av;
+    if (Math.abs(diff) > 0.0001) return diff;
+    return b.holes - a.holes || a.name.localeCompare(b.name);
+  });
+
+  var lastValue = null;
+  var displayRank = 0;
+  var body = sorted.map(function(p, i){
+    var val = valueFn(p);
+    if (lastValue === null || Math.abs(val - lastValue) > 0.0001) displayRank = i + 1;
+    lastValue = val;
+    return '<tr' + (i === 0 ? ' class="season-leader-row"' : '') + '>' +
+      '<td class="season-rank">' + displayRank + '</td>' +
+      '<td class="season-player"><b>' + escapeLeagueHtml(p.name) + '</b><span>' + escapeLeagueHtml(p.team || '') + '</span></td>' +
+      '<td>' + p.rounds + '</td>' +
+      '<td>' + p.holes + '</td>' +
+      '<td class="season-value">' + formatFn(val) + '</td>' +
+    '</tr>';
+  }).join('');
+
+  return '<div class="season-board"><div class="rate-title">' + title + '</div>' +
+    '<table class="season-leaderboard-table"><thead><tr><th>#</th><th style="text-align:left">Player</th><th>Rds</th><th>Holes</th><th>Value</th></tr></thead><tbody>' +
+    body +
+    '</tbody></table></div>';
+}
+
+function renderFullSeasonLeaderboardsSection(playerStats) {
+  var rows = getFullSeasonLeaderboardPlayers(playerStats);
+  if (!rows.length) return '';
+  return '<div class="analytics-section"><div class="analytics-title">Full Season Leaderboards</div>' +
+    '<div class="analytics-note">These match the public Home page leader categories, expanded to every roster player with scores. Averages are per 9-hole round. Subs are excluded.</div>' +
+    '<div class="analytics-grid season-leaderboards-grid">' +
+      renderFullSeasonLeaderboardBoard('Low Gross Avg', rows, function(p){ return p.grossAvg; }, function(v){ return v === null ? '—' : v.toFixed(1); }, true) +
+      renderFullSeasonLeaderboardBoard('Low Net Avg', rows, function(p){ return p.netAvg; }, function(v){ return v === null ? '—' : v.toFixed(1); }, true) +
+      renderFullSeasonLeaderboardBoard('Most Net Birdies', rows, function(p){ return p.netBirdies; }, function(v){ return v || 0; }, false) +
+    '</div></div>';
+}
+
 function renderStatsAnalyticsSections(playerStats) {
-  return '<div class="analytics-section"><div class="analytics-title">Team Best-Ball Average</div>' + renderTeamBestBallCard() + '</div>' +
+  return renderFullSeasonLeaderboardsSection(playerStats) +
+    '<div class="analytics-section"><div class="analytics-title">Team Best-Ball Average</div>' + renderTeamBestBallCard() + '</div>' +
     renderScoringRatesSection(playerStats);
 }
 
@@ -1733,7 +1796,8 @@ function applyScheduledMatch() {
   document.getElementById('sc-team1').value = matchup.home;
   document.getElementById('sc-team2').value = matchup.away;
 
-  const team1Players = PLAYERS_BY_TEAM[normalizeTeamName(matchup.home)] || [];
+  resetAbsentUI();
+const team1Players = PLAYERS_BY_TEAM[normalizeTeamName(matchup.home)] || [];
   const team2Players = PLAYERS_BY_TEAM[normalizeTeamName(matchup.away)] || [];
   const ids = ['p1a', 'p1b', 'p2a', 'p2b'];
   [team1Players[0], team1Players[1], team2Players[0], team2Players[1]].forEach(function(p, i) {
@@ -1858,27 +1922,39 @@ async function loadSelectedResultForEdit() {
   resetAbsentUI();
   ['p1a','p1b','p2a','p2b'].forEach((id, idx) => {
     const p = players[idx] || {};
-    if ((id === 'p1b' || id === 'p2b') && (p.isAbsent || p.isSub)) {
-      document.getElementById(id+'-name').value = p.absentPlayer || '';
-      document.getElementById(id+'-ghin').value = '';
-      const cb = document.getElementById(id+'-absent');
+    const nameEl = document.getElementById(id+'-name');
+    const ghinEl = document.getElementById(id+'-ghin');
+    const strokesEl = document.getElementById(id+'-strokes');
+    const netStrokesEl = document.getElementById(id+'-net-strokes');
+    const cb = document.getElementById(id+'-absent');
+    const isAbsentOrSub = !!(p.isAbsent || p.isSub);
+
+    if (isAbsentOrSub) {
+      if (nameEl) nameEl.value = p.absentPlayer || '';
+      if (ghinEl) ghinEl.value = '';
+      if (strokesEl) strokesEl.value = '';
+      if (netStrokesEl) netStrokesEl.value = '';
       if (cb) cb.checked = true;
       onAbsentChange(id);
+
+      const subNameEl = document.getElementById(id+'-sub-name');
+      const subGhinEl = document.getElementById(id+'-sub-ghin');
+      const subStrokesEl = document.getElementById(id+'-sub-strokes');
+      const subNetStrokesEl = document.getElementById(id+'-sub-net-strokes');
       if (p.isSub) {
-        const subNameEl = document.getElementById(id+'-sub-name');
-        const subGhinEl = document.getElementById(id+'-sub-ghin');
-        const subStrokesEl = document.getElementById(id+'-sub-strokes');
-        const subNetStrokesEl = document.getElementById(id+'-sub-net-strokes');
         if (subNameEl) subNameEl.value = p.name || '';
         if (subGhinEl) subGhinEl.value = p.ghin || '';
         if (subStrokesEl) subStrokesEl.value = getManualStrokeNumber(p.manualStrokes ?? p.matchStrokes ?? p.strokesReceived) ?? '';
         if (subNetStrokesEl) subNetStrokesEl.value = getManualStrokeNumber(p.netStrokes ?? p.actualNetStrokes ?? p.squabbitNetStrokes) ?? '';
+      } else {
+        if (subNameEl) subNameEl.value = '';
+        if (subGhinEl) subGhinEl.value = '';
+        if (subStrokesEl) subStrokesEl.value = '';
+        if (subNetStrokesEl) subNetStrokesEl.value = '';
       }
     } else {
-      document.getElementById(id+'-name').value = p.name || '';
-      document.getElementById(id+'-ghin').value = p.ghin || '';
-      const strokesEl = document.getElementById(id+'-strokes');
-      const netStrokesEl = document.getElementById(id+'-net-strokes');
+      if (nameEl) nameEl.value = p.name || '';
+      if (ghinEl) ghinEl.value = p.ghin || '';
       if (strokesEl) strokesEl.value = getManualStrokeNumber(p.manualStrokes ?? p.matchStrokes ?? p.strokesReceived) ?? '';
       if (netStrokesEl) netStrokesEl.value = getManualStrokeNumber(p.netStrokes ?? p.actualNetStrokes ?? p.squabbitNetStrokes) ?? '';
     }
@@ -1894,14 +1970,17 @@ async function loadSelectedResultForEdit() {
 
 // ── ABSENT / SUB HANDLING ──
 function onAbsentChange(slot) {
-  const absent = document.getElementById(slot + '-absent').checked;
+  const cb = document.getElementById(slot + '-absent');
+  const absent = !!(cb && cb.checked);
   const subFields = document.getElementById(slot + '-sub-fields');
   const nameInput = document.getElementById(slot + '-name');
   const ghinInput = document.getElementById(slot + '-ghin');
   const strokeInput = document.getElementById(slot + '-strokes');
   const netStrokeInput = document.getElementById(slot + '-net-strokes');
+  if (!nameInput || !ghinInput) return;
+
   if (absent) {
-    subFields.style.display = 'flex';
+    if (subFields) subFields.style.display = 'flex';
     nameInput.disabled = true;
     ghinInput.disabled = true;
     if (strokeInput) strokeInput.disabled = true;
@@ -1911,7 +1990,7 @@ function onAbsentChange(slot) {
     if (strokeInput) strokeInput.style.opacity = '0.4';
     if (netStrokeInput) netStrokeInput.style.opacity = '0.4';
   } else {
-    subFields.style.display = 'none';
+    if (subFields) subFields.style.display = 'none';
     nameInput.disabled = false;
     ghinInput.disabled = false;
     if (strokeInput) strokeInput.disabled = false;
@@ -1920,10 +1999,12 @@ function onAbsentChange(slot) {
     ghinInput.style.opacity = '';
     if (strokeInput) strokeInput.style.opacity = '';
     if (netStrokeInput) netStrokeInput.style.opacity = '';
-    document.getElementById(slot + '-sub-name').value = '';
-    document.getElementById(slot + '-sub-ghin').value = '';
+    const subName = document.getElementById(slot + '-sub-name');
+    const subGhin = document.getElementById(slot + '-sub-ghin');
     const subStroke = document.getElementById(slot + '-sub-strokes');
     const subNetStroke = document.getElementById(slot + '-sub-net-strokes');
+    if (subName) subName.value = '';
+    if (subGhin) subGhin.value = '';
     if (subStroke) subStroke.value = '';
     if (subNetStroke) subNetStroke.value = '';
   }
@@ -1936,7 +2017,7 @@ function getSlotAbsent(slot) {
 }
 
 function resetAbsentUI() {
-  ['p1b','p2b'].forEach(slot => {
+  ['p1a','p1b','p2a','p2b'].forEach(slot => {
     const cb = document.getElementById(slot + '-absent');
     if (cb) cb.checked = false;
     onAbsentChange(slot);
@@ -1987,30 +2068,67 @@ function validateNetStrokesBeforeSave(players) {
 function getPlayers() {
   function buildSlot(id, defaultName, team) {
     const absent = getSlotAbsent(id);
+    const nameEl = document.getElementById(id + '-name');
+    const ghinEl = document.getElementById(id + '-ghin');
+    const originalName = (nameEl && nameEl.value) ? nameEl.value : defaultName;
+
     if (absent) {
       const subName = (document.getElementById(id + '-sub-name') || {}).value || '';
       const subGhin = (document.getElementById(id + '-sub-ghin') || {}).value || '';
       const subStrokes = getManualStrokeInputValue(id, true);
       const subNetStrokes = getNetStrokeInputValue(id, true);
       if (subName.trim()) {
-        return {id, name: subName.trim(), ghin: subGhin, team, manualStrokes: subStrokes, matchStrokes: subStrokes, netStrokes: subNetStrokes, actualNetStrokes: subNetStrokes, isSub: true, absentPlayer: document.getElementById(id + '-name').value || ''};
+        return {
+          id,
+          name: subName.trim(),
+          ghin: subGhin,
+          team,
+          manualStrokes: subStrokes,
+          matchStrokes: subStrokes,
+          strokesReceived: subStrokes,
+          netStrokes: subNetStrokes,
+          actualNetStrokes: subNetStrokes,
+          squabbitNetStrokes: subNetStrokes,
+          isSub: true,
+          absentPlayer: originalName
+        };
       }
-      return {id, name: document.getElementById(id + '-name').value || defaultName, ghin: '', team, manualStrokes: null, matchStrokes: null, netStrokes: null, actualNetStrokes: null, isAbsent: true, absentPlayer: document.getElementById(id + '-name').value || defaultName};
+      return {
+        id,
+        name: originalName,
+        ghin: '',
+        team,
+        manualStrokes: null,
+        matchStrokes: null,
+        strokesReceived: null,
+        netStrokes: null,
+        actualNetStrokes: null,
+        squabbitNetStrokes: null,
+        isAbsent: true,
+        absentPlayer: originalName
+      };
     }
+
     const strokes = getManualStrokeInputValue(id, false);
     const netStrokes = getNetStrokeInputValue(id, false);
-    return {id, name: document.getElementById(id + '-name').value || defaultName, ghin: document.getElementById(id + '-ghin').value, team, manualStrokes: strokes, matchStrokes: strokes, netStrokes, actualNetStrokes: netStrokes};
+    return {
+      id,
+      name: originalName,
+      ghin: ghinEl ? ghinEl.value : '',
+      team,
+      manualStrokes: strokes,
+      matchStrokes: strokes,
+      strokesReceived: strokes,
+      netStrokes,
+      actualNetStrokes: netStrokes,
+      squabbitNetStrokes: netStrokes
+    };
   }
 
-  const p1aStrokes = getManualStrokeInputValue('p1a', false);
-  const p2aStrokes = getManualStrokeInputValue('p2a', false);
-  const p1aNetStrokes = getNetStrokeInputValue('p1a', false);
-  const p2aNetStrokes = getNetStrokeInputValue('p2a', false);
-
   return [
-    {id:'p1a', name:document.getElementById('p1a-name').value||'Player 1A', ghin:document.getElementById('p1a-ghin').value, team:1, manualStrokes:p1aStrokes, matchStrokes:p1aStrokes, netStrokes:p1aNetStrokes, actualNetStrokes:p1aNetStrokes},
+    buildSlot('p1a', 'Player 1A', 1),
     buildSlot('p1b', 'Player 1B', 1),
-    {id:'p2a', name:document.getElementById('p2a-name').value||'Player 2A', ghin:document.getElementById('p2a-ghin').value, team:2, manualStrokes:p2aStrokes, matchStrokes:p2aStrokes, netStrokes:p2aNetStrokes, actualNetStrokes:p2aNetStrokes},
+    buildSlot('p2a', 'Player 2A', 2),
     buildSlot('p2b', 'Player 2B', 2),
   ];
 }
@@ -2565,11 +2683,16 @@ async function saveMatch() {
   // Reset form
   scorecardScores = {};
   ['p1a','p1b','p2a','p2b'].forEach(id => {
-    document.getElementById(id+'-name').value = '';
-    document.getElementById(id+'-ghin').value = '';
+    const nameEl = document.getElementById(id+'-name');
+    const ghinEl = document.getElementById(id+'-ghin');
     const strokesEl = document.getElementById(id+'-strokes');
+    const netStrokesEl = document.getElementById(id+'-net-strokes');
+    if (nameEl) nameEl.value = '';
+    if (ghinEl) ghinEl.value = '';
     if (strokesEl) strokesEl.value = '';
+    if (netStrokesEl) netStrokesEl.value = '';
   });
+  resetAbsentUI();
   document.getElementById('sc-week').value = '';
   document.getElementById('scorecard-card').style.display = 'none';
   document.getElementById('save-bar').style.display = 'none';
