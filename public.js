@@ -97,7 +97,7 @@ let RESULTS = [];
 var SKINS_DATA = [];
 var CTP_DATA = [];
 const STORAGE_KEY = 'hggl_2026_state_v2';
-const HGL_FRONTEND_VERSION = 'v4.9.32-gross-birdies-leaderboards';
+const HGL_FRONTEND_VERSION = 'v4.9.33-compact-leaderboards';
 try { console.log('Hockey Guys Golf League frontend ' + HGL_FRONTEND_VERSION); } catch(e) {}
 let currentUser = null;
 let scorecardScores = {};  // "pid_hole" -> gross score string
@@ -1369,12 +1369,12 @@ function renderFullSeasonLeaderboardsSection(playerStats) {
   var rows = getFullSeasonLeaderboardPlayers(playerStats);
   if (!rows.length) return '';
   return '<div class="analytics-section"><div class="analytics-title">Full Season Leaderboards</div>' +
-    '<div class="analytics-note">These match the public Home page leader categories, expanded to every roster player with scores. Averages are per 9-hole round. Subs are excluded.</div>' +
+    '<div class="analytics-note">Roster players only. Subs excluded. Averages are per 9-hole round.</div>' +
     '<div class="analytics-grid season-leaderboards-grid">' +
       renderFullSeasonLeaderboardBoard('Low Gross Avg', rows, function(p){ return p.grossAvg; }, function(v){ return v === null ? '—' : v.toFixed(1); }, true, 'Avg') +
       renderFullSeasonLeaderboardBoard('Low Net Avg', rows, function(p){ return p.netAvg; }, function(v){ return v === null ? '—' : v.toFixed(1); }, true, 'Avg') +
-      renderFullSeasonLeaderboardBoard('Most Gross Birdies', rows, function(p){ return p.grossBirdies; }, function(v){ return v || 0; }, false, 'Birdies') +
-      renderFullSeasonLeaderboardBoard('Most Net Birdies', rows, function(p){ return p.netBirdies; }, function(v){ return v || 0; }, false, 'Birdies') +
+      renderFullSeasonLeaderboardBoard('Gross Birdie Leaders', rows, function(p){ return p.grossBirdies; }, function(v){ return v || 0; }, false, 'Birdies') +
+      renderFullSeasonLeaderboardBoard('Net Birdie Leaders', rows, function(p){ return p.netBirdies; }, function(v){ return v || 0; }, false, 'Birdies') +
     '</div></div>';
 }
 
