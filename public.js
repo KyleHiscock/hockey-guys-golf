@@ -97,7 +97,7 @@ let RESULTS = [];
 var SKINS_DATA = [];
 var CTP_DATA = [];
 const STORAGE_KEY = 'hggl_2026_state_v2';
-const HGL_FRONTEND_VERSION = 'v4.9.34-current-form-records';
+const HGL_FRONTEND_VERSION = 'v4.9.35-individual-net-holes-won';
 try { console.log('Hockey Guys Golf League frontend ' + HGL_FRONTEND_VERSION); } catch(e) {}
 let currentUser = null;
 let scorecardScores = {};  // "pid_hole" -> gross score string
@@ -1327,7 +1327,9 @@ function getFullSeasonLeaderboardPlayers(playerStats) {
       grossAvg: p.roundsPlayed ? (p.totalGross / p.roundsPlayed) : null,
       netAvg: p.roundsPlayed ? (p.totalNet / p.roundsPlayed) : null,
       netBirdies: p.netBirdies || 0,
-      grossBirdies: p.birdies || 0
+      grossBirdies: p.birdies || 0,
+      individualNetHolesWon: p.individualNetHolesWon || 0,
+      individualNetHoleWinPct: p.totalHoles ? Math.round(((p.individualNetHolesWon || 0) / p.totalHoles) * 100) : 0
     };
   });
 }
@@ -1375,6 +1377,7 @@ function renderFullSeasonLeaderboardsSection(playerStats) {
       renderFullSeasonLeaderboardBoard('Low Net Avg', rows, function(p){ return p.netAvg; }, function(v){ return v === null ? '—' : v.toFixed(1); }, true, 'Avg') +
       renderFullSeasonLeaderboardBoard('Gross Birdie Leaders', rows, function(p){ return p.grossBirdies; }, function(v){ return v || 0; }, false, 'Birdies') +
       renderFullSeasonLeaderboardBoard('Net Birdie Leaders', rows, function(p){ return p.netBirdies; }, function(v){ return v || 0; }, false, 'Birdies') +
+      renderFullSeasonLeaderboardBoard('Individual Net Holes Won', rows, function(p){ return p.individualNetHolesWon; }, function(v){ return v || 0; }, false, 'Won') +
     '</div></div>';
 }
 
@@ -1415,6 +1418,7 @@ function renderPlayerCurrentFormMini(player) {
       '<div><b>' + form.grossAvg.toFixed(1) + '</b><span>Gross Avg</span></div>' +
       '<div><b>' + form.netAvg.toFixed(1) + '</b><span>Net Avg</span></div>' +
       '<div><b>' + form.record + '</b><span>Match Form</span></div>' +
+      '<div><b>' + form.rounds.reduce(function(sum,r){ return sum + (parseInt(r.individualNetHolesWon,10) || 0); }, 0) + '</b><span>Net Holes Won</span></div>' +
     '</div>' +
     '<div class="psc-form-rounds">' + form.rounds.map(function(r){
       return '<span>Wk ' + escapeLeagueHtml(r.week || '') + ': ' + (r.gross || '—') + ' / ' + (r.net || '—') + ' ' + escapeLeagueHtml(r.result || '') + '</span>';
@@ -2722,6 +2726,45 @@ function computePlayerStats() {
     // Match-play relative strokes are still used only for match scoring / hole winners.
     var playerStrokes = calcPlayerStatStrokes(allPlayers, side);
     var strokeMaps = allPlayers.map(function(p, i) { return getStrokeHoles(playerStrokes[i] || 0, holes); });
+
+    // Individual Net Holes Won:
+    // Credit the roster player whose net score is the team's counting best-ball score
+    // on a hole the team wins. If both teammates tie for the counting winning net score,
+    // both get credit. Subs can help the team win a hole but remain excluded from the
+    // season-long individual leaderboard/stat totals.
+    var individualNetHoleWinsByIndex = [0,0,0,0];
+    if (Object.keys(scores).length) {
+      holes.forEach(function(h) {
+        var entries = [0,1,2,3].map(function(pi) {
+          var ap = allPlayers[pi] || {};
+          if (ap.isAbsent || !ap.name) return null;
+          var gross = getScoreForPlayerHole(scores, ap, pi, h.hole);
+          if (gross === null || isNaN(gross)) return null;
+          return {
+            playerIndex: pi,
+            teamIndex: pi < 2 ? 1 : 2,
+            net: gross - holeStrokeCount(strokeMaps[pi], h.hole)
+          };
+        }).filter(Boolean);
+
+        var t1 = entries.filter(function(e){ return e.teamIndex === 1; });
+        var t2 = entries.filter(function(e){ return e.teamIndex === 2; });
+        if (!t1.length || !t2.length) return;
+
+        var t1Best = Math.min.apply(null, t1.map(function(e){ return e.net; }));
+        var t2Best = Math.min.apply(null, t2.map(function(e){ return e.net; }));
+        if (t1Best === t2Best) return;
+
+        var winners = t1Best < t2Best
+          ? t1.filter(function(e){ return e.net === t1Best; })
+          : t2.filter(function(e){ return e.net === t2Best; });
+
+        winners.forEach(function(e) {
+          individualNetHoleWinsByIndex[e.playerIndex] = (individualNetHoleWinsByIndex[e.playerIndex] || 0) + 1;
+        });
+      });
+    }
+
     var wlCounted = {};
 
     allPlayers.forEach(function(p, playerIndex) {
@@ -2752,6 +2795,8 @@ function computePlayerStats() {
           netBogeys: 0,
           netDoubles: 0,
           netWorse: 0,
+          individualNetHolesWon: 0,
+          individualNetHoleWinPct: 0,
           holeScores: {},
           roundHistory: []
         };
@@ -2775,6 +2820,7 @@ function computePlayerStats() {
       var holeCount = 0;
       var roundGrossBirdies = 0;
       var roundNetBirdies = 0;
+      var roundIndividualNetHolesWon = individualNetHoleWinsByIndex[playerIndex] || 0;
       var roundPars = 0;
       holes.forEach(function(h) {
         var gross = getScoreForPlayerHole(scores, p, playerIndex, h.hole);
@@ -2813,6 +2859,8 @@ function computePlayerStats() {
         if (grossTotal > ps.worstGross) ps.worstGross = grossTotal;
         if (ps.bestNet === undefined || netTotal < ps.bestNet) ps.bestNet = netTotal;
         if (ps.worstNet === undefined || netTotal > ps.worstNet) ps.worstNet = netTotal;
+        ps.individualNetHolesWon += roundIndividualNetHolesWon;
+        ps.individualNetHoleWinPct = ps.totalHoles > 0 ? Math.round((ps.individualNetHolesWon / ps.totalHoles) * 100) : 0;
         ps.roundHistory.push({
           week: parseInt(result.week, 10) || result.week || '',
           side: result.side || '',
@@ -2821,6 +2869,7 @@ function computePlayerStats() {
           holes: holeCount,
           grossBirdies: roundGrossBirdies,
           netBirdies: roundNetBirdies,
+          individualNetHolesWon: roundIndividualNetHolesWon,
           pars: roundPars,
           result: p.won ? 'W' : (p.lost ? 'L' : 'T')
         });
@@ -2962,6 +3011,8 @@ function buildStats() {
         '<div class="psc-detail-grid">' +
           '<div class="psc-detail-item"><span class="psc-detail-label">Rounds</span><span class="psc-detail-val">' + p.roundsPlayed + '</span></div>' +
           '<div class="psc-detail-item"><span class="psc-detail-label">Holes Played</span><span class="psc-detail-val">' + p.totalHoles + '</span></div>' +
+          '<div class="psc-detail-item"><span class="psc-detail-label">Net Holes Won</span><span class="psc-detail-val" style="color:var(--ice)">' + (p.individualNetHolesWon || 0) + '</span></div>' +
+          '<div class="psc-detail-item"><span class="psc-detail-label">Net Hole Win %</span><span class="psc-detail-val">' + (p.totalHoles ? Math.round(((p.individualNetHolesWon || 0)/p.totalHoles)*100) : 0) + '%</span></div>' +
           '<div class="psc-detail-item"><span class="psc-detail-label">Best Gross</span><span class="psc-detail-val" style="color:var(--gold)">' + bestG + '</span></div>' +
           '<div class="psc-detail-item"><span class="psc-detail-label">Worst Gross</span><span class="psc-detail-val" style="color:var(--red)">' + worstG + '</span></div>' +
           '<div class="psc-detail-item"><span class="psc-detail-label">Best Net</span><span class="psc-detail-val" style="color:var(--green)">' + bestN + '</span></div>' +

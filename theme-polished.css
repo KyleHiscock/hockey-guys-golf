@@ -428,3 +428,8 @@ body{background:linear-gradient(180deg,#101826 0%,#111827 42%,#0e1521 100%);font
 @media(max-width:520px){
   .psc-form-grid{grid-template-columns:1fr;}
 }
+
+
+/* v4.9.35 Individual net holes won */
+.psc-form-grid{grid-template-columns:repeat(4,minmax(0,1fr));}
+@media(max-width:620px){.psc-form-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
