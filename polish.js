@@ -15,11 +15,27 @@ const ALL_PLAYERS = [
   'Drexy','Nick',
   'Ando','Kendrick',
   'CJ','Justyn',
-  'Tank','Bob',
+  'Tank','Bob','Kerbs',
 ];
 const LEAGUE_PLAYER_SET = new Set(ALL_PLAYERS.map(name => String(name).trim().toLowerCase()));
 function isLeaguePlayerName(name) {
   return LEAGUE_PLAYER_SET.has(String(name || '').trim().toLowerCase());
+}
+
+// Bob's 2026 season ended after Week 10; Kerbs becomes an official roster player in Week 11.
+const ROSTER_WEEK_LIMITS = {
+  bob:   { through: 10 },
+  kerbs: { from: 11 }
+};
+
+function isPlayerRosterEligibleForWeek(name, week) {
+  const key = String(name || '').trim().toLowerCase();
+  const wk = parseInt(week, 10);
+  const limits = ROSTER_WEEK_LIMITS[key];
+  if (!limits || isNaN(wk)) return true;
+  if (limits.from && wk < limits.from) return false;
+  if (limits.through && wk > limits.through) return false;
+  return true;
 }
 
 function escapeLeagueHtml(value) {
@@ -213,6 +229,7 @@ function computeAttendanceStats() {
   weekNums.forEach(wk => {
     const wkData = weeks[String(wk)] || {};
     ALL_PLAYERS.forEach(name => {
+      if (!isPlayerRosterEligibleForWeek(name, wk)) return;
       if (!(name in wkData)) return;
       stats[name].weeksTracked++;
       if (wkData[name]) stats[name].weeksAtBar++;
@@ -222,7 +239,9 @@ function computeAttendanceStats() {
   ALL_PLAYERS.forEach(name => {
     let streak = 0, active = true;
     for (let i = weekNums.length - 1; i >= 0; i--) {
-      const wkData = weeks[String(weekNums[i])] || {};
+      const wk = weekNums[i];
+      const wkData = weeks[String(wk)] || {};
+      if (!isPlayerRosterEligibleForWeek(name, wk)) continue;
       if (!(name in wkData)) continue;
       if (active && wkData[name]) { streak++; }
       else { active = false; }
@@ -294,6 +313,7 @@ function computeHandicapStats() {
     const wk   = parseInt(r.Week, 10);
     const idx  = parseFloat(r.GHINIndex);
     if (!name || isNaN(wk) || isNaN(idx)) return;
+    if (!isPlayerRosterEligibleForWeek(name, wk)) return;
     // Do not show subs in the public handicap tracker. The tracker is for regular league players only.
     if (!isLeaguePlayerName(name)) return;
     if (!byPlayer[name]) byPlayer[name] = [];
@@ -383,11 +403,12 @@ function buildAttendanceEditor() {
   const nextWeek   = Math.max(...allWeekNums) + 1;
   const newWeekOpt = `<option value="${nextWeek}">Week ${nextWeek} (new)</option>`;
   const wkData     = weeks[String(selectedWeek)] || {};
+  const attendancePlayers = ALL_PLAYERS.filter(name => isPlayerRosterEligibleForWeek(name, selectedWeek));
   const syncNote   = (typeof USE_GOOGLE_SHEETS_SYNC !== 'undefined' && USE_GOOGLE_SHEETS_SYNC)
     ? '<span style="color:var(--green);font-size:11px;letter-spacing:.5px;">● Synced to Google Sheets</span>'
     : '<span style="color:var(--gold);font-size:11px;letter-spacing:.5px;">⚠ Local only — Sheets unavailable</span>';
 
-  const checkboxes = ALL_PLAYERS.map(name => {
+  const checkboxes = attendancePlayers.map(name => {
     const checked = wkData[name] === true ? 'checked' : '';
     const safeId  = 'att_' + name.replace(/\s+/g,'_').replace(/[^a-zA-Z0-9_]/g,'');
     return `<label class="att-check-label">
@@ -436,8 +457,9 @@ async function saveAttendanceWeek() {
   const weekEl = document.getElementById('att-week-select');
   const week   = parseInt(weekEl ? weekEl.value : (window._attEditorWeek || 1));
   const msg    = document.getElementById('att-save-msg');
+  const attendancePlayers = ALL_PLAYERS.filter(name => isPlayerRosterEligibleForWeek(name, week));
 
-  const players = ALL_PLAYERS.map(name => {
+  const players = attendancePlayers.map(name => {
     const safeId = 'att_' + name.replace(/\s+/g,'_').replace(/[^a-zA-Z0-9_]/g,'');
     const cb     = document.getElementById(safeId);
     return { name, atBar: cb ? cb.checked : false };
@@ -467,7 +489,8 @@ async function saveAttendanceWeek() {
 
 async function clearAttendanceWeek(week) {
   if (!confirm('Clear attendance for Week ' + week + '?')) return;
-  const players = ALL_PLAYERS.map(name => ({ name, atBar: false }));
+  const attendancePlayers = ALL_PLAYERS.filter(name => isPlayerRosterEligibleForWeek(name, week));
+  const players = attendancePlayers.map(name => ({ name, atBar: false }));
   try {
     if (typeof postLeagueAction === 'function' && USE_GOOGLE_SHEETS_SYNC) {
       await postLeagueAction('saveAttendance', { week, players });

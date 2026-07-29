@@ -53,19 +53,31 @@ const DEFAULT_TEAMS = [
   {name:'Pin Sharks',       players:'Drexy & Nick',      w:0, l:0, holesWon:0, holesLost:0},
   {name:'Rough Riders',     players:'Ando & Kendrick',   w:0, l:0, holesWon:0, holesLost:0},
   {name:'2 Cocks 1 Ball',   players:'CJ & Justyn',       w:0, l:0, holesWon:0, holesLost:0},
-  {name:'Foot Wedge Crew',  players:'Tank & Bob',        w:0, l:0, holesWon:0, holesLost:0},
+  {name:'Foot Wedge Crew',  players:'Tank & Kerbs',      w:0, l:0, holesWon:0, holesLost:0},
 ];
 
 let TEAMS = DEFAULT_TEAMS.map(t => ({...t}));
 
+const HISTORICAL_ROSTER_PLAYERS = ['Bob'];
+
 function getOfficialRosterNameSet() {
   var names = new Set();
-  DEFAULT_TEAMS.forEach(function(t) {
+  var rosterTeams = (typeof TEAMS !== 'undefined' && Array.isArray(TEAMS) && TEAMS.length)
+    ? TEAMS
+    : DEFAULT_TEAMS;
+
+  rosterTeams.forEach(function(t) {
     String(t.players || '').split('&').forEach(function(n) {
       var cleaned = normalizePlayerStatName(n.trim());
       if (cleaned) names.add(cleaned.toLowerCase());
     });
   });
+
+  HISTORICAL_ROSTER_PLAYERS.forEach(function(n) {
+    var cleaned = normalizePlayerStatName(n);
+    if (cleaned) names.add(cleaned.toLowerCase());
+  });
+
   return names;
 }
 
