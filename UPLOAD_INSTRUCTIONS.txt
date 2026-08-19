@@ -1,0 +1,27 @@
+HGGL 2026 PLAYOFF UPDATE — v5.0.2
+
+UPLOAD / REPLACE THESE FILES IN THE ROOT OF THE GITHUB REPOSITORY:
+1. index.html
+2. theme-polished.css
+3. playoffs.js
+4. admin.js
+5. admin.html
+
+UNCHANGED — DO NOT REPLACE:
+- public.js
+- polish.js
+- style.css
+- robots.txt
+- existing README / notes files
+
+WHAT THIS UPDATE DOES:
+- Adds a dedicated Playoffs tab and 3-round postseason view.
+- Locks the displayed final regular-season seeds/records.
+- Shows Week 15 quarterfinals in seed/tee-time order.
+- Reseeds automatically for Week 16.
+- Builds the championship matchup automatically for Week 17.
+- Shows Alive / Eliminated / Champion states.
+- Keeps unused Week 16/17 placeholder rows out of admin score selection.
+- Keeps playoff results from changing regular-season standings in admin fallback logic.
+
+Google Sheet playoff seed/schedule automation was already configured separately.

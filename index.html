@@ -10,7 +10,7 @@
 <meta http-equiv="Expires" content="0">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Condensed:wght@400;600;700;900&family=Barlow:wght@400;500;600;700;800&family=Inter+Tight:wght@500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css?v=4.9.35-individual-net-holes-won">
-<link rel="stylesheet" href="theme-polished.css?v=4.9.35-individual-net-holes-won">
+<link rel="stylesheet" href="theme-polished.css?v=5.0.2-playoffs">
 </head>
 <body>
 
@@ -41,6 +41,7 @@
 <div class="nav">
   <button class="nav-btn active" onclick="show('dashboard',this)">Home</button>
   <button class="nav-btn" onclick="show('standings',this)">Standings</button>
+  <button class="nav-btn nav-btn-playoffs" data-playoffs-nav onclick="show('playoffs',this);buildPlayoffsPage()">Playoffs</button>
   <button class="nav-btn" onclick="show('schedule',this)">Schedule</button>
   <button class="nav-btn" onclick="show('results',this)">Results</button>
   <button class="nav-btn" onclick="show('extras',this);buildExtras()">Skins &amp; CTP</button>
@@ -70,6 +71,12 @@
       </table>
     </div>
     <div id="view-cards" style="display:none"><div class="cards-grid" id="cards-grid"></div></div>
+  </div>
+
+  <div id="playoffs" class="section">
+    <div class="section-header"><span class="section-label">2026 Playoffs</span><div class="section-header-line"></div></div>
+    <p class="section-subtitle">Frozen regular-season seeds, live advancement, reseeding, and the road to the HGGL championship.</p>
+    <div id="playoffs-container"></div>
   </div>
 
   <div id="schedule" class="section">
@@ -203,6 +210,7 @@
 
 <script src="public.js?v=4.9.36-week11-kerbs-roster"></script>
 <script src="polish.js?v=4.9.36-week11-kerbs-roster"></script>
+<script src="playoffs.js?v=5.0.2-playoffs"></script>
 
 </body>
 </html>

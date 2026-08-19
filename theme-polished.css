@@ -433,3 +433,162 @@ body{background:linear-gradient(180deg,#101826 0%,#111827 42%,#0e1521 100%);font
 /* v4.9.35 Individual net holes won */
 .psc-form-grid{grid-template-columns:repeat(4,minmax(0,1fr));}
 @media(max-width:620px){.psc-form-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
+/* ── V5.0.2 HGGL PLAYOFFS ─────────────────────────────────────────────────── */
+.nav-btn-playoffs{color:var(--gold)!important;font-weight:800!important}
+.nav-btn-playoffs.active{color:#fff!important}
+.nav-btn-playoffs::after{background:var(--gold)!important}
+
+.playoffs-hero-card{
+  position:relative;overflow:hidden;
+  border:1px solid rgba(216,179,93,.28);border-radius:18px;
+  padding:24px 20px;margin-bottom:16px;
+  background:
+    radial-gradient(circle at 85% 0%,rgba(216,179,93,.16),transparent 34%),
+    linear-gradient(135deg,rgba(216,179,93,.09),rgba(159,201,220,.035) 55%,rgba(255,255,255,.025));
+  box-shadow:0 18px 45px rgba(0,0,0,.22)
+}
+.playoffs-hero-card::before{
+  content:'';position:absolute;left:0;right:0;top:0;height:4px;
+  background:linear-gradient(90deg,var(--gold),var(--ice),var(--gold))
+}
+.po-hero-kicker,.po-round-kicker,.po-panel-head,.po-result,.po-side,
+.po-reseed-badge,.po-format-strip,.po-status,.po-team-tag{
+  font-family:'Barlow Condensed','Inter Tight',sans-serif;text-transform:uppercase;letter-spacing:1.4px
+}
+.po-hero-kicker{font-size:11px;font-weight:800;color:var(--gold);margin-bottom:5px}
+.po-hero-title{font-family:'Bebas Neue',sans-serif;font-size:clamp(38px,7vw,62px);line-height:.95;letter-spacing:1.5px;color:#fff}
+.po-hero-stage{margin-top:8px;color:var(--ice);font-weight:700;font-size:14px}
+.po-format-strip{display:flex;flex-wrap:wrap;gap:7px 10px;margin-top:16px;color:var(--muted);font-size:10px;font-weight:800}
+.po-format-strip b{color:var(--gold)}
+
+.po-champion-banner{
+  display:flex;align-items:center;gap:14px;border:1px solid rgba(216,179,93,.36);
+  border-radius:18px;padding:17px 18px;margin:0 0 16px;
+  background:linear-gradient(90deg,rgba(216,179,93,.16),rgba(216,179,93,.05))
+}
+.po-champion-trophy{font-size:40px}
+.po-champion-banner span{display:block;font-size:10px;letter-spacing:1.6px;color:var(--gold);font-weight:800}
+.po-champion-banner strong{display:block;font-family:'Bebas Neue',sans-serif;font-size:30px;color:#fff;line-height:1}
+.po-champion-logo{width:54px;height:54px;object-fit:contain;margin-left:auto}
+
+.po-bracket-grid{display:grid;grid-template-columns:1.2fr 1fr .9fr;gap:14px;align-items:start;margin-bottom:16px}
+.po-round-col{min-width:0}
+.po-round-head{padding:0 3px 9px}
+.po-round-kicker{color:var(--gold);font-size:10px;font-weight:800}
+.po-round-title{font-family:'Bebas Neue',sans-serif;font-size:25px;letter-spacing:.8px;color:#fff}
+.po-round-date{font-size:11px;color:var(--muted);margin-top:1px}
+.po-reseed-badge{
+  display:inline-flex;align-items:center;gap:4px;margin:0 0 7px 3px;padding:4px 7px;
+  border-radius:999px;border:1px solid rgba(159,201,220,.2);
+  background:rgba(159,201,220,.07);color:var(--ice);font-size:9px;font-weight:800
+}
+.po-round-matches{display:grid;gap:10px}
+
+.po-match-card{
+  position:relative;border-radius:15px;padding:11px;
+  background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.022));
+  border:1px solid rgba(255,255,255,.08);box-shadow:0 12px 28px rgba(0,0,0,.13)
+}
+.po-match-card.is-complete{border-color:rgba(124,199,122,.22)}
+.po-match-meta{
+  display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;
+  font-family:'Barlow Condensed',sans-serif;font-size:10px;letter-spacing:1.1px;
+  text-transform:uppercase;color:var(--muted)
+}
+.po-match-meta strong{font-size:11px;color:var(--gold)}
+.po-team-line{
+  display:grid;grid-template-columns:25px 34px minmax(0,1fr);gap:8px;align-items:center;
+  padding:8px;border-radius:11px;background:rgba(255,255,255,.025);border:1px solid transparent
+}
+.po-team-line.is-winner{background:rgba(124,199,122,.08);border-color:rgba(124,199,122,.18)}
+.po-team-line.is-loser{opacity:.48}
+.po-seed-pill{
+  width:25px;height:25px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  background:rgba(216,179,93,.13);border:1px solid rgba(216,179,93,.25);
+  font-family:'Bebas Neue',sans-serif;color:var(--gold);font-size:14px
+}
+.po-logo,.po-logo-placeholder{
+  width:34px;height:34px;object-fit:contain;border-radius:5px;display:flex;align-items:center;
+  justify-content:center;background:rgba(255,255,255,.05);font-weight:800;color:var(--muted)
+}
+.po-team-copy{min-width:0}
+.po-team-name{font-weight:800;color:#fff;font-size:12px;line-height:1.08;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.po-team-record{font-size:9px;color:var(--muted);margin-top:2px}
+.po-team-placeholder{opacity:.62}
+.po-team-tag{display:inline-block;margin-left:5px;font-size:7px;color:var(--green);vertical-align:1px}
+.po-team-tag.eliminated{color:var(--red)}
+.po-vs-line{height:16px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-family:'Bebas Neue',sans-serif;font-size:10px;letter-spacing:1px}
+.po-result{margin-top:8px;padding-top:7px;border-top:1px solid rgba(255,255,255,.06);font-size:9px;color:var(--green);font-weight:800}
+.po-result span{color:#fff}
+.po-result.pending{color:var(--muted)}
+.po-side{position:absolute;right:10px;bottom:8px;font-size:8px;color:rgba(255,255,255,.25)}
+
+.po-reseed-explainer{
+  border-left:3px solid var(--ice);padding:10px 12px;margin:4px 0 16px;
+  border-radius:0 10px 10px 0;background:rgba(159,201,220,.055);
+  color:var(--muted);font-size:12px;line-height:1.4
+}
+.po-reseed-explainer strong{color:#fff}
+
+.po-seeds-panel{
+  border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:14px;
+  background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.018))
+}
+.po-panel-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:10px;color:#fff;font-size:11px;font-weight:800}
+.po-panel-head span{color:var(--gold)}
+.po-panel-note{font-size:9px;color:var(--muted);font-weight:700}
+.po-seeds-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.po-seed-row{
+  display:grid;grid-template-columns:34px 30px minmax(0,1fr) auto;align-items:center;gap:7px;
+  padding:8px 9px;border-radius:10px;background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.05)
+}
+.po-seed-row.status-eliminated{opacity:.48}
+.po-seed-row.status-champion{border-color:rgba(216,179,93,.35);background:rgba(216,179,93,.08)}
+.po-seed-number{font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--gold)}
+.po-seed-logo{width:30px;height:30px;object-fit:contain}
+.po-seed-team{min-width:0}
+.po-seed-team strong{display:block;color:#fff;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.po-seed-team span{display:block;color:var(--muted);font-size:9px;margin-top:1px}
+.po-status{font-size:8px;font-weight:800;color:var(--green)}
+.status-eliminated .po-status{color:var(--red)}
+.status-champion .po-status{color:var(--gold)}
+
+.poh-list{display:grid;gap:8px}
+.poh-match{border-radius:12px;padding:10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.055)}
+.poh-time{font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:800;letter-spacing:1.3px;color:var(--gold);text-transform:uppercase;margin-bottom:6px}
+.poh-pair{display:grid;grid-template-columns:1fr auto 1fr;gap:7px;align-items:center}
+.poh-team{display:flex;align-items:center;gap:6px;min-width:0;color:#fff;font-size:11px;font-weight:700}
+.poh-team:nth-child(3){justify-content:flex-end;text-align:right}
+.poh-team.winner{color:var(--green)}
+.poh-team.loser{opacity:.5}
+.poh-team.placeholder{color:var(--muted)}
+.poh-seed{
+  width:20px;height:20px;flex:0 0 20px;border-radius:50%;display:flex;align-items:center;
+  justify-content:center;background:rgba(216,179,93,.12);color:var(--gold);
+  font-family:'Bebas Neue',sans-serif;font-size:12px
+}
+.poh-logo{width:23px;height:23px;object-fit:contain}
+.poh-vs{font-family:'Bebas Neue',sans-serif;color:var(--muted);font-size:10px}
+.poh-result{margin-top:6px;font-size:9px;color:var(--green);font-weight:800;text-align:center}
+.po-view-bracket{
+  width:100%;margin-top:9px;padding:9px 10px;border:1px solid rgba(216,179,93,.22);
+  border-radius:10px;background:rgba(216,179,93,.075);color:var(--gold);
+  font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:800;letter-spacing:1.2px;cursor:pointer
+}
+.po-view-bracket:hover{background:rgba(216,179,93,.12)}
+
+@media(max-width:760px){
+  .po-bracket-grid{grid-template-columns:1fr}
+  .po-seeds-grid{grid-template-columns:1fr}
+  .po-round-col{margin-bottom:4px}
+  .po-panel-head{align-items:flex-start;flex-direction:column;gap:3px}
+}
+@media(max-width:430px){
+  .po-hero-title{font-size:40px}
+  .playoffs-hero-card{padding:20px 15px}
+  .po-format-strip{font-size:9px}
+  .poh-pair{grid-template-columns:1fr}
+  .poh-team:nth-child(3){justify-content:flex-start;text-align:left}
+  .poh-vs{text-align:center}
+  .po-team-name{font-size:11px}
+}

@@ -333,15 +333,28 @@ function buildTeamsFromSheet(data) {
           ? defaultTeam.players
           : '';
 
+      const playoffSeed = parseSheetNumber(t['Playoff Seed'] || t.PlayoffSeed || 0);
+      const frozenWRaw = t['Reg Season W'] ?? t.RegSeasonW;
+      const frozenLRaw = t['Reg Season L'] ?? t.RegSeasonL;
+      const frozenHWRaw = t['Reg Season HW'] ?? t.RegSeasonHW;
+      const hasFrozenRegularSeason =
+        playoffSeed > 0 &&
+        frozenWRaw !== undefined && frozenWRaw !== null && frozenWRaw !== '' &&
+        frozenLRaw !== undefined && frozenLRaw !== null && frozenLRaw !== '' &&
+        frozenHWRaw !== undefined && frozenHWRaw !== null && frozenHWRaw !== '';
+      const frozenW = parseSheetNumber(frozenWRaw || 0);
+      const frozenL = parseSheetNumber(frozenLRaw || 0);
+
       return {
         name,
         players,
-        w: parseSheetNumber(st.W || st.Wins || 0),
-        l: parseSheetNumber(st.L || st.Losses || 0),
-        holesWon: parseSheetNumber(st.HW || st.HolesWon || 0),
+        w: hasFrozenRegularSeason ? frozenW : parseSheetNumber(st.W || st.Wins || 0),
+        l: hasFrozenRegularSeason ? frozenL : parseSheetNumber(st.L || st.Losses || 0),
+        holesWon: hasFrozenRegularSeason ? parseSheetNumber(frozenHWRaw || 0) : parseSheetNumber(st.HW || st.HolesWon || 0),
         holesLost: parseSheetNumber(st.HL || st.HolesLost || 0),
         holeDiff: parseSheetNumber(st.HDiff || st['Hole Differential'] || 0),
-        matches: parseSheetNumber(st.Matches || 0),
+        matches: hasFrozenRegularSeason ? (frozenW + frozenL) : parseSheetNumber(st.Matches || 0),
+        playoffSeed: playoffSeed || 0,
         playoffOpponent: st['Opening Round If Playoffs Started Today'] || ''
       };
     });
@@ -353,6 +366,16 @@ function buildScheduleFromSheet(data) {
   (data.schedule || []).forEach(row => {
     const week = Number(row.Week || row.week || 0);
     if (!week) return;
+
+    // The original schedule template had four rows for every week.
+    // Playoffs use only 2 semifinal matches (Week 16) and 1 final (Week 17).
+    const matchNumber = Number(row['Match #'] || row.MatchNumber || row.Match || 0);
+    const rowNotes = String(row.Notes || row.Note || '').trim().toLowerCase();
+    if (
+      rowNotes.includes('unused playoff slot') ||
+      (week === 16 && matchNumber > 2) ||
+      (week === 17 && matchNumber > 1)
+    ) return;
 
     const rowStatus = String(row.Status || '').trim().toLowerCase();
     const isRowLocked = rowStatus === 'locked' || rowStatus === 'lock';
@@ -1789,6 +1812,10 @@ function buildScheduledMatchSelect() {
   const options = ['<option value="">Manual Entry / Select Match</option>'];
   SCHEDULE_WEEKS.forEach(w => {
     w.matchups.forEach((m, idx) => {
+      const status = String(m.status || '').trim().toLowerCase();
+      const home = String(m.home || '').trim();
+      const away = String(m.away || '').trim();
+      if (!home || !away || /^tbd$/i.test(home) || /^tbd$/i.test(away) || status === 'tbd') return;
       options.push(`<option value="${w.week}|${idx}">Week ${w.week} · ${m.time} · ${m.home} vs ${m.away}</option>`);
     });
   });
@@ -1848,6 +1875,9 @@ function buildRosterDatalist() {
 function recalcRecordsFromResults() {
   TEAMS = DEFAULT_TEAMS.map(t => ({...t, w:0, l:0, holesWon:0, holesLost:0}));
   RESULTS.forEach(r => {
+    const resultWeek = parseInt(r.week, 10);
+    if (Number.isFinite(resultWeek) && resultWeek >= 15) return; // playoffs do not alter regular-season standings
+
     const t1 = TEAMS.find(t => t.name === r.team1);
     const t2 = TEAMS.find(t => t.name === r.team2);
     if(!t1 || !t2) return;
