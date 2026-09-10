@@ -1,0 +1,20 @@
+{
+  "league": "The Hockey Guys Golf League",
+  "updated": "2026-09-10",
+  "champions": [
+    {
+      "season": 2026,
+      "team": "Pin Sharks",
+      "players": ["Drexy", "Nick"],
+      "runnerUp": "Bombs Away",
+      "runnerUpPlayers": ["Gener", "Tony"],
+      "result": "1 UP"
+    },
+    {
+      "season": 2024,
+      "team": "Swing Grease",
+      "players": ["Kyle", "Gracey", "Tanker", "Tony"],
+      "note": "Confirmed from surviving 2024 league records and championship payout records."
+    }
+  ]
+}
