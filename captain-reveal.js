@@ -1,16 +1,44 @@
 /*
  * HGGL 2027 Captain Reveal
- * Owns the preseason captain teaser and hides the old live ticker while 2027 is selected.
+ * Owns the preseason captain teaser, hides the old live ticker, and blocks
+ * legacy 2026 Sheet rendering while 2027 preseason is selected.
  */
 (function () {
   'use strict';
 
   var scheduled = false;
+  var legacyGuardsInstalled = false;
+  var originalApplyLeagueDataFromSheet = null;
+  var originalRebuildAll = null;
 
   function is2027Preseason() {
     return !!document.body &&
       document.body.classList.contains('season-preseason') &&
       document.body.getAttribute('data-season') === '2027';
+  }
+
+  function installLegacyRenderGuards() {
+    if (legacyGuardsInstalled) return true;
+
+    if (typeof window.applyLeagueDataFromSheet !== 'function' || typeof window.rebuildAll !== 'function') {
+      return false;
+    }
+
+    originalApplyLeagueDataFromSheet = window.applyLeagueDataFromSheet;
+    originalRebuildAll = window.rebuildAll;
+
+    window.applyLeagueDataFromSheet = function () {
+      if (is2027Preseason()) return;
+      return originalApplyLeagueDataFromSheet.apply(this, arguments);
+    };
+
+    window.rebuildAll = function () {
+      if (is2027Preseason()) return;
+      return originalRebuildAll.apply(this, arguments);
+    };
+
+    legacyGuardsInstalled = true;
+    return true;
   }
 
   function injectStyles() {
@@ -69,6 +97,7 @@
   }
 
   function ensure2027UI() {
+    installLegacyRenderGuards();
     if (!is2027Preseason()) return false;
 
     var ticker = document.querySelector('.ticker-wrap');
@@ -80,7 +109,6 @@
     var shell = dash.querySelector('.preseason-shell');
     if (!shell) return false;
 
-    /* Remove any older reveal that was inserted outside the shell. */
     Array.prototype.forEach.call(dash.querySelectorAll('.captain-reveal'), function (el) {
       if (!shell.contains(el)) el.remove();
     });
@@ -104,6 +132,7 @@
   }
 
   injectStyles();
+  installLegacyRenderGuards();
   ensure2027UI();
 
   var observer = new MutationObserver(queueEnsure);
@@ -114,11 +143,12 @@
     attributeFilter: ['class', 'data-season']
   });
 
-  /* Short startup poll covers asynchronous season/config initialization. */
+  /* Keep checking through the initial Google Sheets request window. */
   var attempts = 0;
   var timer = setInterval(function () {
     attempts += 1;
+    installLegacyRenderGuards();
     ensure2027UI();
-    if (attempts >= 80) clearInterval(timer);
+    if (attempts >= 120) clearInterval(timer);
   }, 250);
 })();
