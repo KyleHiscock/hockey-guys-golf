@@ -37,6 +37,7 @@
     var style = document.createElement('style');
     style.id = 'hggl-captain-reveal-styles';
     style.textContent = `
+      body.season-preseason #dashboard-container>.captain-reveal{display:block!important;}
       .captain-reveal{margin:18px 0 14px;padding:22px 20px 20px;border:1px solid rgba(255,255,255,.09);border-radius:18px;background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.018));position:relative;overflow:hidden;}
       .captain-reveal:before{content:'';position:absolute;left:0;top:0;width:100%;height:2px;background:linear-gradient(90deg,transparent,var(--gold),rgba(159,201,220,.8),var(--gold),transparent);opacity:.8;}
       .captain-reveal-head{text-align:center;margin-bottom:17px;position:relative;z-index:1;}
@@ -74,12 +75,11 @@
 
   function renderCaptainReveal() {
     if (!document.body.classList.contains('season-preseason') || document.body.getAttribute('data-season') !== '2027') return false;
-    var shell = document.querySelector('#dashboard-container .preseason-shell');
+    var dash = document.getElementById('dashboard-container');
+    if (!dash) return false;
+    var shell = dash.querySelector('.preseason-shell');
     if (!shell) return false;
-    if (shell.querySelector('.captain-reveal')) return true;
-
-    var hero = shell.querySelector('.preseason-hero-card');
-    if (!hero) return false;
+    if (dash.querySelector('.captain-reveal')) return true;
 
     var section = document.createElement('section');
     section.className = 'captain-reveal';
@@ -91,7 +91,8 @@
       '</div>' +
       '<div class="captain-grid">' + card(1) + card(2) + card(3) + card(4) + '</div>';
 
-    hero.insertAdjacentElement('afterend', section);
+    /* Keep this outside .preseason-shell because season-manager rebuilds that shell several times on load. */
+    shell.insertAdjacentElement('afterend', section);
     return true;
   }
 
