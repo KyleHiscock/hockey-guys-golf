@@ -1,26 +1,27 @@
 /*
- * HGGL 2027 Captain Reveal + preseason stability guard
- * Keeps the 2027 preseason dashboard intact if legacy live-data rendering finishes late.
+ * HGGL 2027 Captain Reveal
+ * Owns the preseason captain teaser and hides the old live ticker while 2027 is selected.
  */
 (function () {
   'use strict';
 
-  var recovering = false;
-  var recoveryQueued = false;
+  var scheduled = false;
 
   function is2027Preseason() {
-    return document.body.classList.contains('season-preseason') &&
+    return !!document.body &&
+      document.body.classList.contains('season-preseason') &&
       document.body.getAttribute('data-season') === '2027';
   }
 
   function injectStyles() {
     if (document.getElementById('hggl-captain-reveal-styles')) return;
+
     var style = document.createElement('style');
     style.id = 'hggl-captain-reveal-styles';
     style.textContent = `
-      body.season-preseason #dashboard-container>.captain-reveal{display:block!important;}
-      .captain-reveal{margin:18px 0 14px;padding:22px 20px 20px;border:1px solid rgba(255,255,255,.09);border-radius:18px;background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.018));position:relative;overflow:hidden;}
-      .captain-reveal:before{content:'';position:absolute;left:0;top:0;width:100%;height:2px;background:linear-gradient(90deg,transparent,var(--gold),rgba(159,201,220,.8),var(--gold),transparent);opacity:.8;}
+      body.season-preseason[data-season="2027"] .ticker-wrap{display:none!important;}
+      .preseason-shell .captain-reveal{display:block!important;margin:14px 0;padding:22px 20px 20px;border:1px solid rgba(255,255,255,.09);border-radius:18px;background:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.018));position:relative;overflow:hidden;}
+      .preseason-shell .captain-reveal:before{content:'';position:absolute;left:0;top:0;width:100%;height:2px;background:linear-gradient(90deg,transparent,var(--gold),rgba(159,201,220,.8),var(--gold),transparent);opacity:.8;}
       .captain-reveal-head{text-align:center;margin-bottom:17px;position:relative;z-index:1;}
       .captain-reveal-kicker{font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:900;letter-spacing:3px;text-transform:uppercase;color:var(--gold);}
       .captain-reveal-title{font-family:'Bebas Neue',sans-serif;font-size:34px;line-height:1;letter-spacing:2px;color:#fff;margin:5px 0 6px;}
@@ -37,7 +38,7 @@
       .captain-number{font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:900;letter-spacing:2.2px;text-transform:uppercase;color:var(--gold);}
       .captain-status{font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1.3px;color:#fff;margin-top:2px;}
       .captain-card:hover{transform:translateY(-2px);border-color:rgba(216,179,93,.42);transition:transform .18s ease,border-color .18s ease;}
-      @media (max-width:760px){.captain-grid{grid-template-columns:repeat(2,minmax(0,1fr));}.captain-portrait{height:158px;}.captain-reveal{padding:19px 15px 16px;}}
+      @media (max-width:760px){.captain-grid{grid-template-columns:repeat(2,minmax(0,1fr));}.captain-portrait{height:158px;}.preseason-shell .captain-reveal{padding:19px 15px 16px;}}
       @media (max-width:420px){.captain-grid{gap:8px;}.captain-portrait{height:145px;}.captain-silhouette{transform:translateX(-50%) scale(.9);transform-origin:bottom center;}.captain-question{font-size:62px;}.captain-card-body{padding:10px 7px 11px;}.captain-status{font-size:18px;}.captain-reveal-title{font-size:30px;}}
     `;
     document.head.appendChild(style);
@@ -54,14 +55,7 @@
     '</div>';
   }
 
-  function renderCaptainReveal() {
-    if (!is2027Preseason()) return false;
-    var dash = document.getElementById('dashboard-container');
-    if (!dash) return false;
-    var shell = dash.querySelector('.preseason-shell');
-    if (!shell) return false;
-    if (dash.querySelector('.captain-reveal')) return true;
-
+  function makeReveal() {
     var section = document.createElement('section');
     section.className = 'captain-reveal';
     section.innerHTML =
@@ -71,66 +65,60 @@
         '<div class="captain-reveal-copy">Four captains. Four new squads. Names coming soon.</div>' +
       '</div>' +
       '<div class="captain-grid">' + card(1) + card(2) + card(3) + card(4) + '</div>';
-
-    shell.insertAdjacentElement('afterend', section);
-    return true;
+    return section;
   }
 
-  function recoverPreseason() {
-    recoveryQueued = false;
-    if (!is2027Preseason()) return;
+  function ensure2027UI() {
+    if (!is2027Preseason()) return false;
 
-    var dash = document.getElementById('dashboard-container');
-    if (!dash) return;
+    var ticker = document.querySelector('.ticker-wrap');
+    if (ticker && ticker.style.display !== 'none') ticker.style.display = 'none';
 
-    if (dash.querySelector('.preseason-shell')) {
-      renderCaptainReveal();
-      return;
-    }
-
-    if (recovering) return;
-    var manager = window.HGGLSeasonManager;
-    if (!manager || typeof manager.init !== 'function') return;
-
-    recovering = true;
-    Promise.resolve(manager.init()).finally(function () {
-      recovering = false;
-      setTimeout(renderCaptainReveal, 40);
-    });
-  }
-
-  function queueRecovery() {
-    if (recoveryQueued) return;
-    recoveryQueued = true;
-    setTimeout(recoverPreseason, 25);
-  }
-
-  function installDashboardGuard() {
     var dash = document.getElementById('dashboard-container');
     if (!dash) return false;
 
-    var observer = new MutationObserver(function () {
-      if (!is2027Preseason()) return;
-      if (!dash.querySelector('.preseason-shell') || !dash.querySelector('.captain-reveal')) queueRecovery();
+    var shell = dash.querySelector('.preseason-shell');
+    if (!shell) return false;
+
+    /* Remove any older reveal that was inserted outside the shell. */
+    Array.prototype.forEach.call(dash.querySelectorAll('.captain-reveal'), function (el) {
+      if (!shell.contains(el)) el.remove();
     });
-    observer.observe(dash, { childList: true });
+
+    if (shell.querySelector('.captain-reveal')) return true;
+
+    var reveal = makeReveal();
+    var hero = shell.querySelector('.preseason-hero-card');
+    if (hero) hero.insertAdjacentElement('afterend', reveal);
+    else shell.insertBefore(reveal, shell.firstChild);
     return true;
   }
 
+  function queueEnsure() {
+    if (scheduled) return;
+    scheduled = true;
+    window.requestAnimationFrame(function () {
+      scheduled = false;
+      ensure2027UI();
+    });
+  }
+
   injectStyles();
+  ensure2027UI();
 
+  var observer = new MutationObserver(queueEnsure);
+  observer.observe(document.documentElement, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['class', 'data-season']
+  });
+
+  /* Short startup poll covers asynchronous season/config initialization. */
   var attempts = 0;
-  var startup = setInterval(function () {
+  var timer = setInterval(function () {
     attempts += 1;
-    recoverPreseason();
-    if (installDashboardGuard() || attempts >= 50) clearInterval(startup);
-  }, 200);
-
-  /* Extra safety during the initial legacy Sheet request window. */
-  var checks = 0;
-  var startupGuard = setInterval(function () {
-    checks += 1;
-    recoverPreseason();
-    if (checks >= 60) clearInterval(startupGuard);
-  }, 500);
+    ensure2027UI();
+    if (attempts >= 80) clearInterval(timer);
+  }, 250);
 })();
