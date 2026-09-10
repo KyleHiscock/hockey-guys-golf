@@ -1,0 +1,28 @@
+{
+  "currentSeason": 2026,
+  "defaultSeason": 2026,
+  "seasons": [
+    {
+      "year": 2026,
+      "status": "current",
+      "label": "2026",
+      "version": "3",
+      "champion": "Pin Sharks",
+      "files": [
+        "data/seasons/2026-core.json",
+        "data/seasons/2026-results-1.json",
+        "data/seasons/2026-results-2.json",
+        "data/seasons/2026-results-3.json",
+        "data/seasons/2026-results-4.json",
+        "data/seasons/2026-results-5.json",
+        "data/seasons/2026-results-6.json",
+        "data/seasons/2026-results-7.json",
+        "data/seasons/2026-results-8.json",
+        "data/seasons/2026-results-9.json",
+        "data/seasons/2026-contests.json",
+        "data/seasons/2026-attendance.json",
+        "data/seasons/2026-handicap.json"
+      ]
+    }
+  ]
+}
