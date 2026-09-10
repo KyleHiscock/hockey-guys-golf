@@ -326,12 +326,12 @@
       shell.innerHTML =
         '<div class="preseason-hero-card">' +
           '<div class="preseason-kicker">2027 HGGL</div>' +
-          '<div class="preseason-title">THE LEAGUE IS GETTING BIGGER.</div>' +
-          '<div class="preseason-copy">HGGL returns in 2027 with 4-person teams and an all-new competition format. The format is still being finalized, but the next chapter is officially underway.</div>' +
+          '<div class="preseason-title">NEW TEAMS. NEW FORMAT. SAME HGGL.</div>' +
+          '<div class="preseason-copy">Same 16 players. Four 4-person teams. The 2027 competition format is still being finalized, but the next chapter is officially underway.</div>' +
           '<div class="preseason-badges"><span class="preseason-badge">4-Person Teams</span><span class="preseason-badge">Format TBD</span><span class="preseason-badge">2027 Season</span></div>' +
         '</div>' +
         '<div class="preseason-grid">' +
-          '<div class="preseason-card"><div class="preseason-card-label">New Look</div><div class="preseason-card-value">4-MAN SQUADS</div><div class="preseason-card-copy">More teammates. More strategy. More chirping.</div></div>' +
+          '<div class="preseason-card"><div class="preseason-card-label">New Look</div><div class="preseason-card-value">4-MAN SQUADS</div><div class="preseason-card-copy">Same 16 players. Bigger squads. More strategy. More chirping.</div></div>' +
           '<div class="preseason-card"><div class="preseason-card-label">New Format</div><div class="preseason-card-value">TBD</div><div class="preseason-card-copy">The 2-man best-ball format is out. The 2027 competition format reveal is coming.</div></div>' +
           '<div class="preseason-card wide"><div class="preseason-card-label">Reigning Champions</div><div class="preseason-card-value">PIN SHARKS</div><div class="preseason-card-copy">Drexy &amp; Nick own the Cup entering the offseason. Who gets their name on it next?</div></div>' +
         '</div>';
@@ -378,7 +378,7 @@
       if (grid && !grid.classList.contains('preseason-rules')) {
         grid.className = 'preseason-rules';
         grid.innerHTML =
-          '<div class="preseason-rule"><strong>Confirmed</strong><b>4-PERSON TEAMS</b><p>The league moves from 2-player teams to 4-player squads in 2027.</p></div>' +
+          '<div class="preseason-rule"><strong>Confirmed</strong><b>4-PERSON TEAMS</b><p>The league reorganizes from eight 2-player teams to four 4-player squads in 2027.</p></div>' +
           '<div class="preseason-rule"><strong>Competition Format</strong><b>TBD</b><p>The 9-hole best-ball format is changing. The new format will be announced once finalized.</p></div>';
       }
     }
