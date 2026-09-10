@@ -97,6 +97,7 @@
 
       body.season-archive #hero-weather{display:none!important;}
       body.season-archive .footer-admin-link{opacity:.45;}
+      body.season-archive .data-status-mini{display:none!important;}
       body.season-preseason #hero-weather{display:none!important;}
       body.season-preseason .data-status-mini{display:none!important;}
       body.season-preseason #dashboard-container>*:not(.preseason-shell){display:none!important;}
@@ -113,13 +114,13 @@
       body.season-preseason #stats #stats-container{display:none!important;}
 
       .preseason-shell{display:block!important;}
-      .preseason-hero-card{position:relative;overflow:hidden;border:1px solid rgba(216,179,93,.34);background:linear-gradient(135deg,rgba(216,179,93,.14),rgba(159,201,220,.07) 58%,rgba(255,255,255,.025));border-radius:18px;padding:26px 24px 24px;margin-bottom:14px;box-shadow:0 18px 42px rgba(0,0,0,.2);}
+      .preseason-hero-card{position:relative;overflow:hidden;border:1px solid rgba(216,179,93,.38);background:linear-gradient(135deg,rgba(216,179,93,.16),rgba(159,201,220,.075) 58%,rgba(255,255,255,.025));border-radius:18px;padding:30px 26px 26px;margin-bottom:14px;box-shadow:0 18px 42px rgba(0,0,0,.2);}
       .preseason-hero-card::after{content:'2027';position:absolute;right:-4px;bottom:-36px;font-family:'Bebas Neue',sans-serif;font-size:150px;letter-spacing:4px;color:rgba(255,255,255,.025);pointer-events:none;}
       .preseason-kicker{font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:900;letter-spacing:3px;text-transform:uppercase;color:var(--gold);}
-      .preseason-title{font-family:'Bebas Neue',sans-serif;font-size:clamp(36px,7vw,58px);line-height:.95;letter-spacing:2px;color:#fff;margin:6px 0 12px;max-width:620px;}
-      .preseason-copy{font-family:'Inter Tight','Barlow',sans-serif;font-size:15px;font-weight:600;line-height:1.5;color:#b9c6d5;max-width:650px;position:relative;z-index:1;}
-      .preseason-badges{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px;position:relative;z-index:1;}
-      .preseason-badge{border:1px solid rgba(216,179,93,.3);background:rgba(16,24,38,.5);border-radius:999px;padding:7px 12px;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:900;letter-spacing:1.7px;text-transform:uppercase;color:var(--gold);}
+      .preseason-title{font-family:'Bebas Neue',sans-serif;font-size:clamp(40px,7vw,62px);line-height:.95;letter-spacing:2px;color:#fff;margin:6px 0 12px;max-width:650px;}
+      .preseason-copy{font-family:'Inter Tight','Barlow',sans-serif;font-size:15px;font-weight:600;line-height:1.5;color:#b9c6d5;max-width:675px;position:relative;z-index:1;}
+      .preseason-badges{display:flex;flex-wrap:wrap;gap:8px;margin-top:20px;position:relative;z-index:1;}
+      .preseason-badge{border:1px solid rgba(216,179,93,.32);background:rgba(16,24,38,.56);border-radius:999px;padding:7px 12px;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:900;letter-spacing:1.7px;text-transform:uppercase;color:var(--gold);}
       .preseason-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
       .preseason-card{background:linear-gradient(180deg,rgba(255,255,255,.048),rgba(255,255,255,.024));border:1px solid rgba(255,255,255,.09);border-radius:16px;padding:18px;min-height:150px;}
       .preseason-card.wide{grid-column:1/-1;min-height:auto;}
@@ -249,11 +250,11 @@
         const banner = document.createElement('div');
         banner.id = 'season-mode-banner';
         banner.className = 'season-mode-banner';
-        banner.textContent = year + ' FINAL SEASON · READ ONLY';
+        banner.textContent = year + ' FINAL SEASON';
         hero.appendChild(banner);
       }
     } else if (preseason) {
-      setHeroFormat(['4-Person Teams', 'New Format', 'Details Coming']);
+      setHeroFormat(['4 Teams', '4 Players Each', 'Format TBD']);
       const banner = document.getElementById('season-mode-banner');
       if (banner) banner.remove();
     }
@@ -290,7 +291,7 @@
     const blockedManualRefresh = async function (btn) {
       if (btn) {
         const old = btn.textContent;
-        btn.textContent = mode === 'archive' ? 'Final · Read Only' : '2027 Coming Soon';
+        btn.textContent = mode === 'archive' ? year + ' Final' : '2027 Coming Soon';
         setTimeout(function () { btn.textContent = old || 'Refresh Data'; }, 1400);
       }
       return false;
@@ -313,7 +314,7 @@
     if (weather) weather.style.display = 'none';
 
     setText('#dashboard .section-label', '2027 Season');
-    setText('#dashboard .section-subtitle', 'A new era of the Hockey Guys Golf League is coming.');
+    setText('#dashboard .section-subtitle', 'Same 16 guys. Four new squads. One Cup.');
 
     const dash = document.getElementById('dashboard-container');
     if (dash) {
@@ -326,14 +327,14 @@
       shell.innerHTML =
         '<div class="preseason-hero-card">' +
           '<div class="preseason-kicker">2027 HGGL</div>' +
-          '<div class="preseason-title">NEW TEAMS. NEW FORMAT. SAME HGGL.</div>' +
-          '<div class="preseason-copy">Same 16 players. Four 4-person teams. The 2027 competition format is still being finalized, but the next chapter is officially underway.</div>' +
-          '<div class="preseason-badges"><span class="preseason-badge">4-Person Teams</span><span class="preseason-badge">Format TBD</span><span class="preseason-badge">2027 Season</span></div>' +
+          '<div class="preseason-title">FOUR TEAMS. ONE CUP.</div>' +
+          '<div class="preseason-copy">Same 16 players. In 2027, HGGL reshuffles from eight 2-man teams into four 4-man squads, with a brand-new competition format still to be revealed.</div>' +
+          '<div class="preseason-badges"><span class="preseason-badge">4 Teams</span><span class="preseason-badge">4 Players Each</span><span class="preseason-badge">16 Players</span><span class="preseason-badge">Format TBD</span></div>' +
         '</div>' +
         '<div class="preseason-grid">' +
-          '<div class="preseason-card"><div class="preseason-card-label">New Look</div><div class="preseason-card-value">4-MAN SQUADS</div><div class="preseason-card-copy">Same 16 players. Bigger squads. More strategy. More chirping.</div></div>' +
-          '<div class="preseason-card"><div class="preseason-card-label">New Format</div><div class="preseason-card-value">TBD</div><div class="preseason-card-copy">The 2-man best-ball format is out. The 2027 competition format reveal is coming.</div></div>' +
-          '<div class="preseason-card wide"><div class="preseason-card-label">Reigning Champions</div><div class="preseason-card-value">PIN SHARKS</div><div class="preseason-card-copy">Drexy &amp; Nick own the Cup entering the offseason. Who gets their name on it next?</div></div>' +
+          '<div class="preseason-card"><div class="preseason-card-label">The Shakeup</div><div class="preseason-card-value">2-MAN → 4-MAN</div><div class="preseason-card-copy">The player count stays the same. The teams do not. Four new squads take over in 2027.</div></div>' +
+          '<div class="preseason-card"><div class="preseason-card-label">Competition</div><div class="preseason-card-value">FORMAT TBD</div><div class="preseason-card-copy">The 2-man best-ball format is out. The new 2027 competition format will be revealed when it is set.</div></div>' +
+          '<div class="preseason-card wide"><div class="preseason-card-label">Reigning Champions</div><div class="preseason-card-value">PIN SHARKS</div><div class="preseason-card-copy">Drexy &amp; Nick enter the offseason with the Cup. Four new teams will be chasing it in 2027.</div></div>' +
         '</div>';
     }
 
@@ -378,7 +379,7 @@
       if (grid && !grid.classList.contains('preseason-rules')) {
         grid.className = 'preseason-rules';
         grid.innerHTML =
-          '<div class="preseason-rule"><strong>Confirmed</strong><b>4-PERSON TEAMS</b><p>The league reorganizes from eight 2-player teams to four 4-player squads in 2027.</p></div>' +
+          '<div class="preseason-rule"><strong>Confirmed</strong><b>4 TEAMS · 4 PLAYERS</b><p>The same 16 players will be reorganized from eight 2-player teams into four 4-player squads.</p></div>' +
           '<div class="preseason-rule"><strong>Competition Format</strong><b>TBD</b><p>The 9-hole best-ball format is changing. The new format will be announced once finalized.</p></div>';
       }
     }
