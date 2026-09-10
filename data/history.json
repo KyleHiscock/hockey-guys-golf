@@ -11,10 +11,34 @@
       "result": "1 UP"
     },
     {
+      "season": 2025,
+      "team": "Rough Riders",
+      "players": ["Steve Andolina", "Kendrick"]
+    },
+    {
       "season": 2024,
       "team": "Swing Grease",
-      "players": ["Kyle", "Gracey", "Tanker", "Tony"],
-      "note": "Confirmed from surviving 2024 league records and championship payout records."
+      "players": ["Kyle Hiscock", "Ryan Grace", "Jake Zaremski", "Tony Micoletta"]
+    },
+    {
+      "season": 2023,
+      "team": "Back 9 Bullies",
+      "players": ["Bob Drexler", "Kyle Hiscock", "Steve Andolina", "Ryan Grace"]
+    },
+    {
+      "season": 2022,
+      "team": "Team Hick",
+      "players": ["Tyler Hickey", "Ryan Grace", "Jessie Haliniak", "Jake Haliniak", "Jake Zaremski", "Scott Stedman", "Rob Kerbs", "Brad Wheeler"]
+    },
+    {
+      "season": 2021,
+      "team": "Tam Hick",
+      "players": ["Tyler Hickey", "Kyle Hiscock", "Corey Sherman", "Adam Mangene", "Andrew Harris", "Steve Andolina"]
+    },
+    {
+      "season": 2020,
+      "team": "Team Hick",
+      "players": ["Tyler Hickey", "Andrew Harris", "Greg Molfese", "Ryan Grace", "Jessie Haliniak", "Jake Zaremski"]
     }
   ]
 }
