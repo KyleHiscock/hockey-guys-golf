@@ -1,10 +1,17 @@
 {
-  "currentSeason": 2026,
-  "defaultSeason": 2026,
+  "currentSeason": 2027,
+  "defaultSeason": 2027,
   "seasons": [
     {
+      "year": 2027,
+      "status": "preseason",
+      "label": "2027",
+      "format": "4-person teams",
+      "formatStatus": "TBD"
+    },
+    {
       "year": 2026,
-      "status": "current",
+      "status": "archive",
       "label": "2026",
       "version": "3",
       "champion": "Pin Sharks",
