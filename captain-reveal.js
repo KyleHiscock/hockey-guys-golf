@@ -5,6 +5,33 @@
 (function () {
   'use strict';
 
+  function enforce2027DefaultOnRoot() {
+    var params = new URLSearchParams(window.location.search);
+    if (params.has('season')) return false;
+
+    var selected = document.body.getAttribute('data-season');
+    if (selected === '2027') {
+      try {
+        localStorage.setItem('hggl_selected_season_v2', '2027');
+        sessionStorage.removeItem('hggl_force_2027_once');
+      } catch (e) {}
+      return false;
+    }
+
+    try {
+      localStorage.setItem('hggl_selected_season_v2', '2027');
+      if (sessionStorage.getItem('hggl_force_2027_once') !== '1') {
+        sessionStorage.setItem('hggl_force_2027_once', '1');
+        window.location.reload();
+        return true;
+      }
+    } catch (e) {}
+
+    return false;
+  }
+
+  if (enforce2027DefaultOnRoot()) return;
+
   function injectStyles() {
     if (document.getElementById('hggl-captain-reveal-styles')) return;
     var style = document.createElement('style');
