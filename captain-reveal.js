@@ -1,36 +1,17 @@
 /*
- * HGGL 2027 Captain Reveal
- * Mystery cards used during preseason; designed to accept real captain photos later.
+ * HGGL 2027 Captain Reveal + preseason stability guard
+ * Keeps the 2027 preseason dashboard intact if legacy live-data rendering finishes late.
  */
 (function () {
   'use strict';
 
-  function enforce2027DefaultOnRoot() {
-    var params = new URLSearchParams(window.location.search);
-    if (params.has('season')) return false;
+  var recovering = false;
+  var recoveryQueued = false;
 
-    var selected = document.body.getAttribute('data-season');
-    if (selected === '2027') {
-      try {
-        localStorage.setItem('hggl_selected_season_v2', '2027');
-        sessionStorage.removeItem('hggl_force_2027_once');
-      } catch (e) {}
-      return false;
-    }
-
-    try {
-      localStorage.setItem('hggl_selected_season_v2', '2027');
-      if (sessionStorage.getItem('hggl_force_2027_once') !== '1') {
-        sessionStorage.setItem('hggl_force_2027_once', '1');
-        window.location.reload();
-        return true;
-      }
-    } catch (e) {}
-
-    return false;
+  function is2027Preseason() {
+    return document.body.classList.contains('season-preseason') &&
+      document.body.getAttribute('data-season') === '2027';
   }
-
-  if (enforce2027DefaultOnRoot()) return;
 
   function injectStyles() {
     if (document.getElementById('hggl-captain-reveal-styles')) return;
@@ -74,7 +55,7 @@
   }
 
   function renderCaptainReveal() {
-    if (!document.body.classList.contains('season-preseason') || document.body.getAttribute('data-season') !== '2027') return false;
+    if (!is2027Preseason()) return false;
     var dash = document.getElementById('dashboard-container');
     if (!dash) return false;
     var shell = dash.querySelector('.preseason-shell');
@@ -91,17 +72,65 @@
       '</div>' +
       '<div class="captain-grid">' + card(1) + card(2) + card(3) + card(4) + '</div>';
 
-    /* Keep this outside .preseason-shell because season-manager rebuilds that shell several times on load. */
     shell.insertAdjacentElement('afterend', section);
     return true;
   }
 
-  injectStyles();
-  if (!renderCaptainReveal()) {
-    var attempts = 0;
-    var timer = setInterval(function () {
-      attempts += 1;
-      if (renderCaptainReveal() || attempts >= 40) clearInterval(timer);
-    }, 200);
+  function recoverPreseason() {
+    recoveryQueued = false;
+    if (!is2027Preseason()) return;
+
+    var dash = document.getElementById('dashboard-container');
+    if (!dash) return;
+
+    if (dash.querySelector('.preseason-shell')) {
+      renderCaptainReveal();
+      return;
+    }
+
+    if (recovering) return;
+    var manager = window.HGGLSeasonManager;
+    if (!manager || typeof manager.init !== 'function') return;
+
+    recovering = true;
+    Promise.resolve(manager.init()).finally(function () {
+      recovering = false;
+      setTimeout(renderCaptainReveal, 40);
+    });
   }
+
+  function queueRecovery() {
+    if (recoveryQueued) return;
+    recoveryQueued = true;
+    setTimeout(recoverPreseason, 25);
+  }
+
+  function installDashboardGuard() {
+    var dash = document.getElementById('dashboard-container');
+    if (!dash) return false;
+
+    var observer = new MutationObserver(function () {
+      if (!is2027Preseason()) return;
+      if (!dash.querySelector('.preseason-shell') || !dash.querySelector('.captain-reveal')) queueRecovery();
+    });
+    observer.observe(dash, { childList: true });
+    return true;
+  }
+
+  injectStyles();
+
+  var attempts = 0;
+  var startup = setInterval(function () {
+    attempts += 1;
+    recoverPreseason();
+    if (installDashboardGuard() || attempts >= 50) clearInterval(startup);
+  }, 200);
+
+  /* Extra safety during the initial legacy Sheet request window. */
+  var checks = 0;
+  var startupGuard = setInterval(function () {
+    checks += 1;
+    recoverPreseason();
+    if (checks >= 60) clearInterval(startupGuard);
+  }, 500);
 })();
