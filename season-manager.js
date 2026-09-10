@@ -1,415 +1,316 @@
+/*
+ * HGGL multi-season archive layer
+ * Keeps the current Google Sheet as the live-season source while allowing
+ * completed seasons to render from frozen JSON snapshots in this repository.
+ */
 (function () {
   'use strict';
 
-  const HISTORY_URL = 'data/league-history.json';
-  const state = {
-    manifest: null,
-    liveData: null,
-    liveSeason: null,
-    selectedSeason: null,
-    archiveCache: {},
-    booted: false
-  };
+  const CONFIG_URL = 'data/seasons/index.json';
+  const HISTORY_URL = 'data/history.json';
+  const SELECTED_SEASON_KEY = 'hggl_selected_season';
+  let seasonConfig = null;
+  let historyData = null;
+  let activeSeasonEntry = null;
+  let originalApplyLeagueData = null;
 
-  function cloneData(value) {
-    if (value === undefined || value === null) return value;
-    return JSON.parse(JSON.stringify(value));
+  function esc(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, function (ch) {
+      return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch];
+    });
   }
 
-  function escapeHtml(value) {
-    return String(value == null ? '' : value)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
+  function qs(selector, root) {
+    return (root || document).querySelector(selector);
   }
 
-  function getSetting(data, key) {
-    if (!data) return '';
-    const settings = data.settings || data.Settings || null;
-    if (Array.isArray(settings)) {
-      const row = settings.find(function (item) {
-        return String(item && (item.Setting || item.setting || item.Key || item.key) || '').trim().toLowerCase() === key.toLowerCase();
-      });
-      if (row) return row.Value ?? row.value ?? row.SettingValue ?? row.settingValue ?? '';
-    }
-    if (settings && typeof settings === 'object') {
-      if (settings[key] !== undefined) return settings[key];
-      const actual = Object.keys(settings).find(function (k) { return k.toLowerCase() === key.toLowerCase(); });
-      if (actual) return settings[actual];
-    }
-    if (data.metadata && key.toLowerCase() === 'seasonyear' && data.metadata.season) return data.metadata.season;
-    return '';
+  function setText(selector, text) {
+    const el = qs(selector);
+    if (el) el.textContent = text;
   }
 
-  function detectSeason(data) {
-    const fromData = Number(getSetting(data, 'SeasonYear'));
-    if (Number.isFinite(fromData) && fromData > 2000) return fromData;
-    if (data && data.metadata && Number(data.metadata.season)) return Number(data.metadata.season);
-    const direct = Number(data && (data.seasonYear || data.SeasonYear || data.season || data.year));
-    if (Number.isFinite(direct) && direct > 2000) return direct;
-    const manifestFallback = Number(state.manifest && state.manifest.currentSeasonFallback);
-    if (Number.isFinite(manifestFallback) && manifestFallback > 2000) return manifestFallback;
-    const titleMatch = String(document.title || '').match(/20\d{2}/);
-    return titleMatch ? Number(titleMatch[0]) : new Date().getFullYear();
+  function requestedSeason(config) {
+    const params = new URLSearchParams(window.location.search);
+    const fromUrl = Number(params.get('season'));
+    if (fromUrl && config.seasons.some(function (s) { return Number(s.year) === fromUrl; })) return fromUrl;
+
+    try {
+      const saved = Number(localStorage.getItem(SELECTED_SEASON_KEY));
+      if (saved && config.seasons.some(function (s) { return Number(s.year) === saved; })) return saved;
+    } catch (e) {}
+
+    return Number(config.defaultSeason || config.currentSeason || (config.seasons[0] && config.seasons[0].year));
   }
 
-  function addStylesheet() {
-    if (document.getElementById('hggl-season-manager-css')) return;
-    const link = document.createElement('link');
-    link.id = 'hggl-season-manager-css';
-    link.rel = 'stylesheet';
-    link.href = 'season-manager.css?v=1.0.0';
-    document.head.appendChild(link);
+  function switchSeason(year) {
+    try { localStorage.setItem(SELECTED_SEASON_KEY, String(year)); } catch (e) {}
+    const url = new URL(window.location.href);
+    url.searchParams.set('season', String(year));
+    window.location.href = url.toString();
   }
 
-  function injectSeasonSwitcher() {
+  function injectStyles() {
+    if (document.getElementById('hggl-season-manager-styles')) return;
+    const style = document.createElement('style');
+    style.id = 'hggl-season-manager-styles';
+    style.textContent = `
+      .season-switcher-wrap{background:#0f151d;border-bottom:1px solid rgba(255,255,255,.08);padding:10px 16px;}
+      .season-switcher{max-width:720px;margin:0 auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+      .season-switcher-label{font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-right:3px;}
+      .season-chip{appearance:none;border:1px solid rgba(255,255,255,.14);background:var(--dark3);color:var(--text);border-radius:999px;padding:6px 11px;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;cursor:pointer;transition:.18s ease;}
+      .season-chip:hover{border-color:rgba(46,204,64,.65);color:#fff;}
+      .season-chip.active{background:var(--green);border-color:var(--green);color:#071009;}
+      .season-chip small{font-size:9px;opacity:.72;margin-left:4px;}
+      .season-mode-banner{max-width:720px;margin:12px auto 0;padding:8px 12px;border:1px solid rgba(245,197,24,.28);background:rgba(245,197,24,.08);border-radius:8px;text-align:center;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:var(--gold);}
+      .history-hero{border:1px solid rgba(245,197,24,.24);background:linear-gradient(145deg,rgba(245,197,24,.12),rgba(46,204,64,.05));border-radius:14px;padding:20px;margin-bottom:16px;}
+      .history-kicker{font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:var(--gold);}
+      .history-title{font-family:'Bebas Neue',sans-serif;font-size:38px;letter-spacing:2px;color:#fff;margin-top:3px;line-height:1;}
+      .history-copy{color:var(--muted);font-size:13px;line-height:1.5;margin-top:8px;}
+      .champion-grid{display:grid;gap:12px;}
+      .champion-card{background:var(--dark3);border:1px solid rgba(255,255,255,.08);border-radius:13px;padding:16px;position:relative;overflow:hidden;}
+      .champion-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--gold);}
+      .champion-season{font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:2px;color:var(--gold);}
+      .champion-team{font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:900;color:#fff;margin-top:2px;}
+      .champion-players{font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;color:var(--ice);margin-top:3px;}
+      .champion-result{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.45;}
+      .history-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:18px;}
+      .history-stat-card{background:var(--dark3);border:1px solid rgba(255,255,255,.07);border-radius:12px;padding:13px;}
+      .history-stat-card b{display:block;font-family:'Bebas Neue',sans-serif;font-size:24px;color:var(--green);letter-spacing:1px;}
+      .history-stat-card span{font-family:'Barlow Condensed',sans-serif;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;}
+      .history-player-table{width:100%;border-collapse:separate;border-spacing:0 6px;margin-top:10px;}
+      .history-player-table th{font-family:'Barlow Condensed',sans-serif;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);text-align:left;padding:0 10px 5px;}
+      .history-player-table td{background:var(--dark3);padding:9px 10px;font-size:12px;}
+      .history-player-table td:first-child{border-radius:8px 0 0 8px;font-weight:700;color:#fff;}
+      .history-player-table td:last-child{border-radius:0 8px 8px 0;color:var(--gold);font-family:'Bebas Neue',sans-serif;font-size:18px;text-align:center;}
+      .history-footnote{font-size:11px;color:var(--muted);line-height:1.45;margin-top:14px;}
+      body.season-archive #hero-weather{display:none!important;}
+      body.season-archive .footer-admin-link{opacity:.45;}
+      @media (max-width:700px){
+        .nav{overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;}
+        .nav::-webkit-scrollbar{display:none;}
+        .nav .nav-btn{flex:0 0 auto;min-width:74px;padding-left:9px;padding-right:9px;}
+        .history-stats{grid-template-columns:1fr;}
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function injectSeasonSwitcher(config, selectedYear) {
     if (document.getElementById('season-switcher-wrap')) return;
-    const nav = document.querySelector('.nav');
-    if (!nav || !nav.parentNode) return;
+    const nav = qs('.nav');
+    if (!nav) return;
     const wrap = document.createElement('div');
     wrap.id = 'season-switcher-wrap';
     wrap.className = 'season-switcher-wrap';
-    wrap.innerHTML =
-      '<div class="season-switcher-inner">' +
-        '<div class="season-switcher-copy">' +
-          '<span class="season-switcher-kicker">HGGL Season</span>' +
-          '<span class="season-mode-status" id="season-mode-status">Current season</span>' +
-        '</div>' +
-        '<label class="season-select-label" for="hggl-season-select">Season</label>' +
-        '<select id="hggl-season-select" class="season-select" aria-label="Choose HGGL season"></select>' +
-      '</div>';
+    const inner = document.createElement('div');
+    inner.className = 'season-switcher';
+    const label = document.createElement('span');
+    label.className = 'season-switcher-label';
+    label.textContent = 'Season';
+    inner.appendChild(label);
+    config.seasons.slice().sort(function (a, b) { return Number(b.year) - Number(a.year); }).forEach(function (entry) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'season-chip' + (Number(entry.year) === Number(selectedYear) ? ' active' : '');
+      button.innerHTML = esc(entry.year) + '<small>' + esc(entry.status === 'current' ? 'Current' : 'Archive') + '</small>';
+      button.addEventListener('click', function () { switchSeason(entry.year); });
+      inner.appendChild(button);
+    });
+    wrap.appendChild(inner);
     nav.parentNode.insertBefore(wrap, nav);
-    wrap.querySelector('#hggl-season-select').addEventListener('change', function (event) {
-      selectSeason(Number(event.target.value));
-    });
   }
 
-  function injectHistoryNavigation() {
-    const nav = document.querySelector('.nav');
-    if (!nav || document.querySelector('[data-history-nav]')) return;
-    const btn = document.createElement('button');
-    btn.className = 'nav-btn';
-    btn.setAttribute('data-history-nav', '');
-    btn.textContent = 'History';
-    btn.addEventListener('click', function () {
-      if (typeof show === 'function') show('history', btn);
-      renderHistory();
-    });
-    const rulesButton = Array.from(nav.querySelectorAll('.nav-btn')).find(function (b) {
-      return String(b.textContent || '').trim().toLowerCase() === 'rules';
-    });
-    if (rulesButton) nav.insertBefore(btn, rulesButton);
-    else nav.appendChild(btn);
-  }
-
-  function injectHistorySection() {
-    if (document.getElementById('history')) return;
-    const content = document.querySelector('.content');
-    if (!content) return;
-    const section = document.createElement('div');
-    section.id = 'history';
-    section.className = 'section';
-    section.innerHTML =
-      '<div class="section-header"><span class="section-label">League History</span><div class="section-header-line"></div></div>' +
-      '<p class="section-subtitle">Champions, championship teams, and the permanent HGGL season archive.</p>' +
-      '<div id="history-container"><div class="history-loading">Loading league history...</div></div>';
-    const rules = document.getElementById('rules');
-    if (rules) content.insertBefore(section, rules);
-    else content.appendChild(section);
-  }
-
-  function archiveYears() {
-    return ((state.manifest && state.manifest.seasons) || [])
-      .filter(function (s) { return !!s.archive; })
-      .map(function (s) { return Number(s.year); })
-      .filter(function (y) { return Number.isFinite(y); });
-  }
-
-  function renderSeasonOptions() {
-    const select = document.getElementById('hggl-season-select');
-    if (!select || !state.liveSeason) return;
-    const years = Array.from(new Set([state.liveSeason].concat(archiveYears()))).sort(function (a, b) { return b - a; });
-    select.innerHTML = years.map(function (year) {
-      const suffix = year === state.liveSeason ? ' · Current' : ' · Archive';
-      return '<option value="' + year + '">' + year + suffix + '</option>';
-    }).join('');
-    select.value = String(state.selectedSeason || state.liveSeason);
-  }
-
-  function setSeasonLabels(year, isArchive) {
-    state.selectedSeason = year;
-    document.body.classList.toggle('season-archive-mode', !!isArchive);
-    document.title = 'Hockey Guys Golf League ' + year + (isArchive ? ' Archive' : '');
-
-    const ticker = document.querySelector('.ticker-label');
-    if (ticker) ticker.innerHTML = (isArchive ? 'ARCHIVE' : 'LIVE') + ' &nbsp;·&nbsp; ' + year;
-
-    const standingsLabel = document.querySelector('#standings .section-label');
-    if (standingsLabel) standingsLabel.textContent = year + ' Standings';
-    const playoffsLabel = document.querySelector('#playoffs .section-label');
-    if (playoffsLabel) playoffsLabel.textContent = year + ' Playoffs';
-
-    const status = document.getElementById('season-mode-status');
-    if (status) status.textContent = isArchive ? 'Final season archive · read only' : 'Current season · live data';
-
-    const footerText = document.querySelector('.footer > div');
-    if (footerText) footerText.innerHTML = 'Hockey Guys Golf League &nbsp;·&nbsp; ' + year + (isArchive ? ' Archive' : ' Season') + ' &nbsp;·&nbsp; Twin Hills · Spencerport NY';
-
-    const select = document.getElementById('hggl-season-select');
-    if (select) select.value = String(year);
-  }
-
-  function refreshVisiblePage() {
-    if (typeof rebuildAll === 'function') rebuildAll();
-    const active = document.querySelector('.section.active');
-    if (!active) return;
-    if (active.id === 'extras' && typeof buildExtras === 'function') buildExtras();
-    if (active.id === 'stats' && typeof buildStats === 'function') buildStats();
-    if (active.id === 'playoffs' && typeof buildPlayoffsPage === 'function') buildPlayoffsPage();
-    if (active.id === 'history') renderHistory();
-  }
-
-  function setDataSourceLabel(year, isArchive) {
-    try {
-      if (typeof LEAGUE_DATA_SOURCE !== 'undefined') LEAGUE_DATA_SOURCE = isArchive ? (year + ' Archive') : 'Google Sheets';
-      if (typeof LEAGUE_DATA_LAST_LOADED !== 'undefined' && isArchive) LEAGUE_DATA_LAST_LOADED = 'Final';
-    } catch (e) {}
-  }
-
-  function applySeasonData(data, year, isArchive) {
-    if (typeof applyLeagueDataFromSheet !== 'function') throw new Error('League data loader is not available.');
-    applyLeagueDataFromSheet(cloneData(data));
-    setDataSourceLabel(year, isArchive);
-    setSeasonLabels(year, isArchive);
-    refreshVisiblePage();
-  }
-
-  async function loadArchive(year) {
-    if (state.archiveCache[year]) return state.archiveCache[year];
-    const entry = ((state.manifest && state.manifest.seasons) || []).find(function (s) { return Number(s.year) === Number(year); });
-    if (!entry || !entry.archive) throw new Error('No archive is configured for ' + year + '.');
-    const response = await fetch(entry.archive + '?v=' + Date.now(), { cache: 'no-store' });
-    if (!response.ok) throw new Error('Could not load the ' + year + ' archive.');
-    const data = await response.json();
-    state.archiveCache[year] = data;
-    return data;
-  }
-
-  async function selectSeason(year, options) {
-    options = options || {};
-    year = Number(year);
-    if (!year || !state.liveSeason) return;
-
-    const select = document.getElementById('hggl-season-select');
-    if (select) select.disabled = true;
-    try {
-      if (year === state.liveSeason) {
-        if (state.liveData) {
-          applySeasonData(state.liveData, year, false);
-        } else {
-          const url = new URL(window.location.href);
-          url.searchParams.delete('season');
-          window.location.href = url.toString();
-          return;
-        }
-      } else {
-        const archive = await loadArchive(year);
-        applySeasonData(archive, year, true);
-      }
-
-      if (options.updateUrl !== false) {
-        const url = new URL(window.location.href);
-        if (year === state.liveSeason) url.searchParams.delete('season');
-        else url.searchParams.set('season', String(year));
-        window.history.replaceState({}, '', url.toString());
-      }
-    } catch (error) {
-      console.error('HGGL season switch failed:', error);
-      alert(error.message || 'Could not switch seasons.');
-      if (select) select.value = String(state.selectedSeason || state.liveSeason);
-    } finally {
-      if (select) select.disabled = false;
+  function injectHistoryNavAndSection() {
+    const nav = qs('.nav');
+    if (nav && !qs('[data-history-nav]', nav)) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'nav-btn';
+      button.setAttribute('data-history-nav', 'true');
+      button.textContent = 'History';
+      button.addEventListener('click', function () {
+        if (typeof window.show === 'function') window.show('history', button);
+        renderHistory();
+      });
+      const rulesBtn = Array.from(nav.querySelectorAll('.nav-btn')).find(function (btn) {
+        return btn.textContent.trim().toLowerCase() === 'rules';
+      });
+      if (rulesBtn) nav.insertBefore(button, rulesBtn); else nav.appendChild(button);
+    }
+    if (!document.getElementById('history')) {
+      const content = qs('.content');
+      if (!content) return;
+      const section = document.createElement('div');
+      section.id = 'history';
+      section.className = 'section';
+      section.innerHTML = '<div class="section-header"><span class="section-label">League History</span><div class="section-header-line"></div></div>' +
+        '<p class="section-subtitle">Champions and league records from completed HGGL seasons.</p>' +
+        '<div id="history-container"><div class="no-results"><div class="no-results-icon">🏆</div><div class="no-results-text">Loading league history...</div></div></div>';
+      const rulesSection = document.getElementById('rules');
+      if (rulesSection) content.insertBefore(section, rulesSection); else content.appendChild(section);
     }
   }
 
-  function championCard(season) {
-    const champ = season.champion || {};
-    const runner = season.runnerUp || {};
-    const players = (champ.players || []).join(' & ');
-    const runnerPlayers = (runner.players || []).join(' & ');
-    const isCurrent = Number(season.year) === Number(state.liveSeason);
-    const hasArchive = !!season.archive;
-    const modeLabel = isCurrent ? 'Current Season' : (hasArchive ? 'Season Archive' : 'League History');
-    const finalLine = runner.team
-      ? '<div class="history-final-line">Defeated ' + escapeHtml(runner.team) + (runnerPlayers ? ' (' + escapeHtml(runnerPlayers) + ')' : '') + (season.championshipResult ? ' · ' + escapeHtml(season.championshipResult) : '') + '</div>'
-      : (season.formatNote ? '<div class="history-final-line">' + escapeHtml(season.formatNote) + '</div>' : '');
-    return '<article class="history-champion-card">' +
-      '<div class="history-year-row"><span class="history-year">' + escapeHtml(season.year) + '</span><span class="history-season-tag">' + modeLabel + '</span></div>' +
-      '<div class="history-trophy">🏆</div>' +
-      '<div class="history-champion-kicker">HGGL Champions</div>' +
-      '<div class="history-champion-team">' + escapeHtml(champ.team || 'TBD') + '</div>' +
-      '<div class="history-champion-players">' + escapeHtml(players || 'Players TBD') + '</div>' +
-      finalLine +
-      '<div class="history-card-meta">' +
-        (champ.seed ? '<span>#' + escapeHtml(champ.seed) + ' playoff seed</span>' : '') +
-        (season.matchesRecorded ? '<span>' + escapeHtml(season.matchesRecorded) + ' matches recorded</span>' : '') +
-      '</div>' +
-      (hasArchive ? '<button class="history-view-season" type="button" data-history-season="' + escapeHtml(season.year) + '">View ' + escapeHtml(season.year) + ' Season</button>' : '') +
-    '</article>';
+  function updateSeasonLabels(entry) {
+    const year = Number(entry.year);
+    const isArchive = entry.status === 'archive';
+    document.body.classList.toggle('season-archive', isArchive);
+    document.body.setAttribute('data-season', String(year));
+    document.body.setAttribute('data-season-mode', isArchive ? 'archive' : 'current');
+    document.title = 'Hockey Guys Golf League ' + year;
+    const ticker = qs('.ticker-label');
+    if (ticker) ticker.innerHTML = (isArchive ? 'ARCHIVE' : 'LIVE') + ' &nbsp;·&nbsp; ' + year;
+    const standingsLabel = qs('#standings .section-label');
+    if (standingsLabel) standingsLabel.textContent = year + ' Standings';
+    const playoffLabel = qs('#playoffs .section-label');
+    if (playoffLabel) playoffLabel.textContent = year + ' Playoffs';
+    if (isArchive) {
+      setText('#dashboard .section-subtitle', 'Final standings, results, playoff matchups, and season leaders from the ' + year + ' archive.');
+      setText('#standings-updated', 'Final ' + year + ' regular-season standings.');
+      setText('#playoffs .section-subtitle', 'Final ' + year + ' playoff bracket and championship results.');
+      setText('#schedule .section-subtitle', 'Final weekly matchups, tee times, and front/back nine assignments.');
+      setText('#results-updated', 'Final ' + year + ' match results.');
+      setText('#extras .section-subtitle', 'Final ' + year + ' net skins and closest-to-the-pin results.');
+      setText('#stats .section-subtitle', 'Final ' + year + ' individual scoring trends and season leaders.');
+      const hero = qs('.hero-inner');
+      if (hero && !document.getElementById('season-mode-banner')) {
+        const banner = document.createElement('div');
+        banner.id = 'season-mode-banner';
+        banner.className = 'season-mode-banner';
+        banner.textContent = year + ' FINAL SEASON ARCHIVE · READ ONLY';
+        hero.appendChild(banner);
+      }
+    }
+    const footerText = qs('.footer > div');
+    if (footerText) footerText.innerHTML = 'Hockey Guys Golf League &nbsp;·&nbsp; ' + year + ' Season &nbsp;·&nbsp; Twin Hills · Spencerport NY';
+  }
+
+  function installArchiveGuards(year) {
+    window.HGGL_ARCHIVE_MODE = true;
+    if (!originalApplyLeagueData) originalApplyLeagueData = window.applyLeagueDataFromSheet;
+    if (typeof originalApplyLeagueData === 'function') {
+      const guardedApply = function (data) {
+        if (window.HGGL_ARCHIVE_MODE && !window.HGGL_ALLOW_ARCHIVE_APPLY) return false;
+        return originalApplyLeagueData(data);
+      };
+      try { window.applyLeagueDataFromSheet = guardedApply; } catch (e) {}
+      try { applyLeagueDataFromSheet = guardedApply; } catch (e) {}
+    }
+    const blockedRefresh = async function () { return false; };
+    try { window.fetchLeagueDataFromSheets = blockedRefresh; } catch (e) {}
+    try { fetchLeagueDataFromSheets = blockedRefresh; } catch (e) {}
+    const archiveStatus = function () { return year + ' Season Archive · Final'; };
+    try { window.getDataStatusLabel = archiveStatus; } catch (e) {}
+    try { getDataStatusLabel = archiveStatus; } catch (e) {}
+    const archiveManualRefresh = async function (btn) {
+      if (btn) {
+        const old = btn.textContent;
+        btn.textContent = 'Archive · Read Only';
+        setTimeout(function () { btn.textContent = old || 'Refresh Data'; }, 1400);
+      }
+      return false;
+    };
+    try { window.manualRefreshLeagueData = archiveManualRefresh; } catch (e) {}
+    try { manualRefreshLeagueData = archiveManualRefresh; } catch (e) {}
+  }
+
+  async function loadArchivedSeason(entry) {
+    installArchiveGuards(entry.year);
+    const archiveFiles = Array.isArray(entry.files) && entry.files.length ? entry.files : [entry.data];
+    const responses = await Promise.all(archiveFiles.map(function (path) {
+      return fetch(path + '?v=' + encodeURIComponent(entry.version || '1'));
+    }));
+    const badResponse = responses.find(function (r) { return !r.ok; });
+    if (badResponse) throw new Error('Could not load ' + entry.year + ' archive (' + badResponse.status + ').');
+    const pieces = await Promise.all(responses.map(function (r) { return r.json(); }));
+    const data = pieces.reduce(function (merged, piece) {
+      Object.keys(piece || {}).forEach(function (key) {
+        if (Array.isArray(piece[key]) && Array.isArray(merged[key])) merged[key] = merged[key].concat(piece[key]); else merged[key] = piece[key];
+      });
+      return merged;
+    }, {});
+    const applyFn = originalApplyLeagueData || window.applyLeagueDataFromSheet;
+    if (typeof applyFn !== 'function') throw new Error('League renderer is not available.');
+    window.HGGL_ALLOW_ARCHIVE_APPLY = true;
+    try { applyFn(data); } finally { window.HGGL_ALLOW_ARCHIVE_APPLY = false; }
+    if (typeof window.rebuildAll === 'function') window.rebuildAll();
+    if (typeof window.buildExtras === 'function') window.buildExtras();
+    if (typeof window.buildPlayoffsPage === 'function') window.buildPlayoffsPage();
+    if (typeof window.initCommissionerNoteEditor === 'function') window.initCommissionerNoteEditor();
+    setTimeout(function () {
+      window.HGGL_ALLOW_ARCHIVE_APPLY = true;
+      try { applyFn(data); } finally { window.HGGL_ALLOW_ARCHIVE_APPLY = false; }
+      if (typeof window.rebuildAll === 'function') window.rebuildAll();
+      if (typeof window.buildExtras === 'function') window.buildExtras();
+      if (typeof window.buildPlayoffsPage === 'function') window.buildPlayoffsPage();
+    }, 900);
   }
 
   function renderHistory() {
     const container = document.getElementById('history-container');
-    if (!container) return;
-    const seasons = ((state.manifest && state.manifest.seasons) || []).slice().sort(function (a, b) { return Number(b.year) - Number(a.year); });
-    if (!seasons.length) {
-      container.innerHTML = '<div class="no-results"><div class="no-results-icon">🏆</div><div class="no-results-text">No championship seasons have been archived yet.</div></div>';
+    if (!container || !historyData) return;
+    const champions = (historyData.champions || []).slice().sort(function (a, b) { return Number(b.season) - Number(a.season); });
+    if (!champions.length) {
+      container.innerHTML = '<div class="no-results"><div class="no-results-icon">🏆</div><div class="no-results-text">No confirmed league champions have been archived yet.</div></div>';
       return;
     }
-
-    const championCounts = {};
-    seasons.forEach(function (season) {
-      ((season.champion && season.champion.players) || []).forEach(function (player) {
-        championCounts[player] = (championCounts[player] || 0) + 1;
-      });
+    const playerCounts = {};
+    champions.forEach(function (season) {
+      (season.players || []).forEach(function (player) { playerCounts[player] = (playerCounts[player] || 0) + 1; });
     });
-    const playerLeaders = Object.keys(championCounts).sort(function (a, b) {
-      return championCounts[b] - championCounts[a] || a.localeCompare(b);
-    });
-
+    const playerRows = Object.keys(playerCounts).sort(function (a, b) { return playerCounts[b] - playerCounts[a] || a.localeCompare(b); });
+    const cards = champions.map(function (season) {
+      let result = '';
+      if (season.runnerUp) result = 'Defeated ' + esc(season.runnerUp) + (season.result ? ' · ' + esc(season.result) : '');
+      else if (season.note) result = esc(season.note);
+      return '<div class="champion-card">' +
+        '<div class="champion-season">🏆 ' + esc(season.season) + ' Champions</div>' +
+        '<div class="champion-team">' + esc(season.team) + '</div>' +
+        '<div class="champion-players">' + esc((season.players || []).join(' · ')) + '</div>' +
+        (result ? '<div class="champion-result">' + result + '</div>' : '') +
+      '</div>';
+    }).join('');
+    const mostTitles = Math.max.apply(null, playerRows.map(function (name) { return playerCounts[name]; }));
+    const leaderNames = playerRows.filter(function (name) { return playerCounts[name] === mostTitles; });
+    const tableRows = playerRows.map(function (name) { return '<tr><td>' + esc(name) + '</td><td>' + playerCounts[name] + '</td></tr>'; }).join('');
     container.innerHTML =
-      '<div class="history-featured">' + championCard(seasons[0]) + '</div>' +
-      '<div class="history-subhead"><span>Championship Archive</span><div></div></div>' +
-      '<div class="history-table-wrap"><table class="history-table"><thead><tr><th>Season</th><th>Champion</th><th>Players</th><th>Runner-Up</th></tr></thead><tbody>' +
-        seasons.map(function (season) {
-          return '<tr>' +
-            '<td>' + (season.archive
-              ? '<button type="button" class="history-year-link" data-history-season="' + escapeHtml(season.year) + '">' + escapeHtml(season.year) + '</button>'
-              : '<span class="history-year-static">' + escapeHtml(season.year) + '</span>') + '</td>' +
-            '<td><strong>' + escapeHtml((season.champion || {}).team || '') + '</strong></td>' +
-            '<td>' + escapeHtml(((season.champion || {}).players || []).join(' & ')) + '</td>' +
-            '<td>' + escapeHtml((season.runnerUp || {}).team || '') + '</td>' +
-          '</tr>';
-        }).join('') +
-      '</tbody></table></div>' +
-      '<div class="history-subhead"><span>Championships by Player</span><div></div></div>' +
-      '<div class="history-player-grid">' +
-        playerLeaders.map(function (player) {
-          const count = championCounts[player];
-          return '<div class="history-player-chip"><span>' + escapeHtml(player) + '</span><strong>' + count + '</strong></div>';
-        }).join('') +
-      '</div>' +
-      '<p class="history-footnote">Additional past champions can be added to the history file as older league records are confirmed. Each archived season remains read-only.</p>';
-
-    container.querySelectorAll('[data-history-season]').forEach(function (button) {
-      button.addEventListener('click', function () { selectSeason(Number(button.getAttribute('data-history-season'))); });
-    });
+      '<div class="history-hero"><div class="history-kicker">The Cup Lives Here</div><div class="history-title">HGGL Champions</div><div class="history-copy">A permanent record of confirmed Hockey Guys Golf League champions. Additional historical seasons can be added as old league records are verified.</div></div>' +
+      '<div class="champion-grid">' + cards + '</div>' +
+      '<div class="history-stats"><div class="history-stat-card"><b>' + champions.length + '</b><span>Confirmed Seasons</span></div><div class="history-stat-card"><b>' + esc(leaderNames.join(' · ')) + '</b><span>Most Championships (' + mostTitles + ')</span></div></div>' +
+      '<div class="section-header" style="margin-top:24px;margin-bottom:8px"><span class="section-label" style="font-size:17px">Championships by Player</span><div class="section-header-line"></div></div>' +
+      '<table class="history-player-table"><thead><tr><th>Player</th><th style="text-align:center">Titles</th></tr></thead><tbody>' + tableRows + '</tbody></table>' +
+      '<div class="history-footnote">Only seasons supported by confirmed league records are shown. Missing seasons are intentionally left out until the champion can be verified.</div>';
   }
 
-  async function loadManifest() {
-    const response = await fetch(HISTORY_URL + '?v=' + Date.now(), { cache: 'no-store' });
-    if (!response.ok) throw new Error('Could not load league history.');
-    state.manifest = await response.json();
-    return state.manifest;
-  }
-
-  function waitForLiveData(timeoutMs) {
-    timeoutMs = timeoutMs || 15000;
-    return new Promise(function (resolve) {
-      const started = Date.now();
-      (function check() {
-        try {
-          if (typeof LEAGUE_API_DATA !== 'undefined' && LEAGUE_API_DATA) {
-            resolve(LEAGUE_API_DATA);
-            return;
-          }
-        } catch (e) {}
-        if (Date.now() - started >= timeoutMs) {
-          resolve(null);
-          return;
-        }
-        setTimeout(check, 100);
-      })();
-    });
-  }
-
-  function guardArchiveRefresh() {
+  async function init() {
     try {
-      if (typeof manualRefreshLeagueData !== 'function' || manualRefreshLeagueData.__seasonGuarded) return;
-      const original = manualRefreshLeagueData;
-      const guarded = async function (btn) {
-        if (state.selectedSeason && state.liveSeason && state.selectedSeason !== state.liveSeason) {
-          alert('Archived seasons are read-only. Switch to the current season to refresh live data.');
-          return;
-        }
-        const answer = await original(btn);
-        try {
-          if (typeof LEAGUE_API_DATA !== 'undefined' && LEAGUE_API_DATA) {
-            state.liveData = cloneData(LEAGUE_API_DATA);
-            const detected = detectSeason(state.liveData);
-            if (detected && detected !== state.liveSeason) {
-              state.liveSeason = detected;
-              state.selectedSeason = detected;
-              renderSeasonOptions();
-              setSeasonLabels(detected, false);
-              renderHistory();
-            }
-          }
-        } catch (e) {}
-        return answer;
-      };
-      guarded.__seasonGuarded = true;
-      manualRefreshLeagueData = guarded;
-    } catch (e) {}
-  }
-
-  async function boot() {
-    if (state.booted) return;
-    state.booted = true;
-    addStylesheet();
-    injectSeasonSwitcher();
-    injectHistoryNavigation();
-    injectHistorySection();
-
-    const manifestPromise = loadManifest().catch(function (error) {
-      console.warn('HGGL history manifest unavailable:', error);
-      state.manifest = { seasons: [] };
-      return state.manifest;
-    });
-
-    const live = await waitForLiveData();
-    state.liveData = live ? cloneData(live) : null;
-    state.liveSeason = detectSeason(live);
-    state.selectedSeason = state.liveSeason;
-
-    await manifestPromise;
-    state.liveSeason = detectSeason(live);
-    state.selectedSeason = state.liveSeason;
-    renderSeasonOptions();
-    renderHistory();
-    setSeasonLabels(state.liveSeason, false);
-    guardArchiveRefresh();
-
-    const requested = Number(new URL(window.location.href).searchParams.get('season'));
-    if (requested && requested !== state.liveSeason && archiveYears().indexOf(requested) >= 0) {
-      await selectSeason(requested, { updateUrl: false });
+      injectStyles();
+      const responses = await Promise.all([fetch(CONFIG_URL + '?v=1'), fetch(HISTORY_URL + '?v=1')]);
+      if (!responses[0].ok) throw new Error('Season index could not be loaded.');
+      seasonConfig = await responses[0].json();
+      historyData = responses[1].ok ? await responses[1].json() : { champions: [] };
+      const year = requestedSeason(seasonConfig);
+      activeSeasonEntry = seasonConfig.seasons.find(function (s) { return Number(s.year) === Number(year); }) || seasonConfig.seasons[0];
+      if (!activeSeasonEntry) throw new Error('No HGGL season is configured.');
+      injectSeasonSwitcher(seasonConfig, activeSeasonEntry.year);
+      injectHistoryNavAndSection();
+      updateSeasonLabels(activeSeasonEntry);
+      renderHistory();
+      if (activeSeasonEntry.status === 'archive' && (activeSeasonEntry.data || (activeSeasonEntry.files && activeSeasonEntry.files.length))) await loadArchivedSeason(activeSeasonEntry);
+    } catch (err) {
+      console.error('HGGL season manager failed:', err);
+      const wrap = document.getElementById('season-switcher-wrap');
+      if (wrap) wrap.title = err.message;
     }
   }
 
-  window.HGGLSeason = {
-    selectSeason: selectSeason,
+  window.HGGLSeasonManager = {
+    init: init,
+    switchSeason: switchSeason,
     renderHistory: renderHistory,
-    getState: function () {
-      return {
-        liveSeason: state.liveSeason,
-        selectedSeason: state.selectedSeason,
-        archives: archiveYears().slice()
-      };
-    }
+    getActiveSeason: function () { return activeSeasonEntry; },
+    getConfig: function () { return seasonConfig; }
   };
 
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
-  else setTimeout(boot, 0);
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 })();
