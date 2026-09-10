@@ -234,7 +234,9 @@
 
   function polishHistoryCopy() {
     var subtitle = document.querySelector('#history .section-subtitle');
-    if (subtitle) subtitle.textContent = 'Past champions and all-time title leaders.';
+    if (subtitle && subtitle.textContent !== 'Past champions and all-time title leaders.') {
+      subtitle.textContent = 'Past champions and all-time title leaders.';
+    }
     var copy = document.querySelector('#history .history-copy');
     if (copy) copy.remove();
     var footnote = document.querySelector('#history .history-footnote');
@@ -247,8 +249,12 @@
   }
 
   polishMemberUI();
-  var observer = new MutationObserver(polishMemberUI);
-  observer.observe(document.body, { childList: true, subtree: true });
+  var uiAttempts = 0;
+  var uiTimer = setInterval(function () {
+    polishMemberUI();
+    uiAttempts++;
+    if (uiAttempts >= 30) clearInterval(uiTimer);
+  }, 200);
 
   /* Use the National Weather Service point forecast for league-night Tuesday. */
   function nwsIcon(shortForecast) {
