@@ -211,7 +211,105 @@
 <script src="public.js?v=5.0.3-backend-endpoint"></script>
 <script src="polish.js?v=4.9.36-week11-kerbs-roster"></script>
 <script src="playoffs.js?v=5.0.2-playoffs"></script>
-  <script src="season-manager.js?v=1.0.0"></script>
+<script src="season-manager.js?v=1.0.0"></script>
+<script>
+(function () {
+  'use strict';
+
+  /* Member-facing polish: keep the database refresh timestamp present but quiet. */
+  var style = document.createElement('style');
+  style.textContent = '.data-status-mini{margin:-2px 0 10px!important;font-family:\'Barlow Condensed\',sans-serif!important;font-size:10px!important;font-weight:600!important;letter-spacing:.45px!important;color:var(--muted)!important;opacity:.58!important}.data-status-mini span{gap:0!important;opacity:1!important}.data-status-mini span:before{display:none!important}';
+  document.head.appendChild(style);
+
+  function polishUpdatedStamp() {
+    var stamp = document.querySelector('.data-status-mini span');
+    if (!stamp) return;
+    var text = String(stamp.textContent || '').trim();
+    if (!/^Last updated:/i.test(text)) return;
+    text = text.replace(/^Last updated:\s*Google Sheets\s*·\s*/i, 'Updated ');
+    text = text.replace(/(\d{1,2}\/\d{1,2})\/\d{4},\s*/i, '$1 · ');
+    text = text.replace(/(\d{1,2}:\d{2}):\d{2}\s*(AM|PM)/i, '$1 $2');
+    if (stamp.textContent !== text) stamp.textContent = text;
+  }
+
+  function polishHistoryCopy() {
+    var subtitle = document.querySelector('#history .section-subtitle');
+    if (subtitle && subtitle.textContent !== 'Past champions and all-time title leaders.') {
+      subtitle.textContent = 'Past champions and all-time title leaders.';
+    }
+    var copy = document.querySelector('#history .history-copy');
+    if (copy) copy.remove();
+    var footnote = document.querySelector('#history .history-footnote');
+    if (footnote) footnote.remove();
+  }
+
+  function polishMemberUI() {
+    polishUpdatedStamp();
+    polishHistoryCopy();
+  }
+
+  polishMemberUI();
+  var uiAttempts = 0;
+  var uiTimer = setInterval(function () {
+    polishMemberUI();
+    uiAttempts++;
+    if (uiAttempts >= 30) clearInterval(uiTimer);
+  }, 200);
+
+  /* Use the National Weather Service point forecast for league-night Tuesday. */
+  function nwsIcon(shortForecast) {
+    var text = String(shortForecast || '').toLowerCase();
+    if (text.indexOf('thunder') >= 0) return '⛈️';
+    if (text.indexOf('snow') >= 0 || text.indexOf('sleet') >= 0) return '🌨️';
+    if (text.indexOf('rain') >= 0 || text.indexOf('showers') >= 0) return '🌦️';
+    if (text.indexOf('cloud') >= 0 && text.indexOf('partly') < 0 && text.indexOf('mostly sunny') < 0) return '☁️';
+    if (text.indexOf('partly') >= 0 || text.indexOf('mostly sunny') >= 0 || text.indexOf('mostly clear') >= 0) return '⛅️';
+    return '☀️';
+  }
+
+  function applyNwsTuesday(period) {
+    var target = document.querySelector('#hero-weather .weather-tuesday');
+    if (!target || !period) return false;
+    var d = new Date(period.startTime);
+    var precip = period.probabilityOfPrecipitation && period.probabilityOfPrecipitation.value;
+    var html = '<span class="weather-label">Tue ' + (d.getMonth() + 1) + '/' + d.getDate() + '</span> ' +
+      nwsIcon(period.shortForecast) + ' ' + Math.round(period.temperature) + '&deg;F' +
+      (precip != null && precip > 20 ? ' &#x1F4A7; ' + Math.round(precip) + '%' : '');
+    if (target.innerHTML !== html) target.innerHTML = html;
+    target.title = 'National Weather Service: ' + (period.shortForecast || 'Tuesday forecast');
+    target.setAttribute('data-forecast-source', 'NWS');
+    return true;
+  }
+
+  fetch('https://api.weather.gov/points/43.1853,-77.8081', {
+    headers: { 'Accept': 'application/geo+json' }
+  }).then(function (r) {
+    if (!r.ok) throw new Error('NWS point lookup failed');
+    return r.json();
+  }).then(function (point) {
+    var forecastUrl = point && point.properties && point.properties.forecast;
+    if (!forecastUrl) throw new Error('NWS forecast URL unavailable');
+    return fetch(forecastUrl, { headers: { 'Accept': 'application/geo+json' } });
+  }).then(function (r) {
+    if (!r.ok) throw new Error('NWS forecast failed');
+    return r.json();
+  }).then(function (forecast) {
+    var periods = (forecast && forecast.properties && forecast.properties.periods) || [];
+    var tuesday = periods.find(function (p) {
+      return p && p.isDaytime && new Date(p.startTime).getDay() === 2;
+    });
+    if (!tuesday) return;
+    var attempts = 0;
+    var timer = setInterval(function () {
+      attempts++;
+      if (applyNwsTuesday(tuesday) || attempts >= 25) clearInterval(timer);
+    }, 200);
+    setTimeout(function () { applyNwsTuesday(tuesday); }, 1800);
+  }).catch(function () {
+    /* Keep the existing current conditions and forecast if NWS is temporarily unavailable. */
+  });
+})();
+</script>
 
 </body>
 </html>
