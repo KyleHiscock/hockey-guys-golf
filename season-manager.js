@@ -38,7 +38,7 @@
 
   function seasonChipLabel(entry) {
     if (isArchive(entry)) return 'Final';
-    if (isPreseason(entry)) return 'Coming';
+    if (isPreseason(entry)) return 'Preseason';
     return entry.status === 'current' ? 'Current' : String(entry.status || 'Season');
   }
 
@@ -291,7 +291,7 @@
     const blockedManualRefresh = async function (btn) {
       if (btn) {
         const old = btn.textContent;
-        btn.textContent = mode === 'archive' ? year + ' Final' : '2027 Coming Soon';
+        btn.textContent = mode === 'archive' ? year + ' Final' : '2027 Preseason';
         setTimeout(function () { btn.textContent = old || 'Refresh Data'; }, 1400);
       }
       return false;
@@ -314,7 +314,7 @@
     if (weather) weather.style.display = 'none';
 
     setText('#dashboard .section-label', '2027 Season');
-    setText('#dashboard .section-subtitle', 'Same 16 guys. Four new squads. One Cup.');
+    setText('#dashboard .section-subtitle', 'Four captains. Four rosters. Team names and format still TBD.');
 
     const dash = document.getElementById('dashboard-container');
     if (dash) {
@@ -328,22 +328,22 @@
         '<div class="preseason-hero-card">' +
           '<div class="preseason-kicker">2027 HGGL</div>' +
           '<div class="preseason-title">FOUR TEAMS. ONE CUP.</div>' +
-          '<div class="preseason-copy">Same 16 players. In 2027, HGGL reshuffles from eight 2-man teams into four 4-man squads, with a brand-new competition format still to be revealed.</div>' +
-          '<div class="preseason-badges"><span class="preseason-badge">4 Teams</span><span class="preseason-badge">4 Players Each</span><span class="preseason-badge">16 Players</span><span class="preseason-badge">Format TBD</span></div>' +
+          '<div class="preseason-copy">The draft is complete. Tony, Nick, Kyle, and Hick now have their four-man squads. Team names and the new competition format are still to be revealed.</div>' +
+          '<div class="preseason-badges"><span class="preseason-badge">4 Teams</span><span class="preseason-badge">Rosters Set</span><span class="preseason-badge">16 Players</span><span class="preseason-badge">Format TBD</span></div>' +
         '</div>' +
         '<div class="preseason-grid">' +
-          '<div class="preseason-card"><div class="preseason-card-label">The Shakeup</div><div class="preseason-card-value">2-MAN → 4-MAN</div><div class="preseason-card-copy">The player count stays the same. The teams do not. Four new squads take over in 2027.</div></div>' +
+          '<div class="preseason-card"><div class="preseason-card-label">Draft Status</div><div class="preseason-card-value">ROSTERS SET</div><div class="preseason-card-copy">Tony, Nick, Kyle, and Hick each drafted three players. Team names are the next reveal.</div></div>' +
           '<div class="preseason-card"><div class="preseason-card-label">Competition</div><div class="preseason-card-value">FORMAT TBD</div><div class="preseason-card-copy">The 2-man best-ball format is out. The new 2027 competition format will be revealed when it is set.</div></div>' +
-          '<div class="preseason-card wide"><div class="preseason-card-label">Reigning Champions</div><div class="preseason-card-value">PIN SHARKS</div><div class="preseason-card-copy">Drexy &amp; Nick enter the offseason with the Cup. Four new teams will be chasing it in 2027.</div></div>' +
+          '<div class="preseason-card wide"><div class="preseason-card-label">Reigning Champions</div><div class="preseason-card-value">PIN SHARKS</div><div class="preseason-card-copy">Drexy &amp; Nick enter 2027 as the reigning champs — but the draft split them onto different squads.</div></div>' +
         '</div>';
     }
 
     setText('#standings .section-label', '2027 Standings');
-    setText('#standings-updated', 'The new 4-person teams and 2027 rosters will be revealed before the season.');
+    setText('#standings-updated', 'The 2027 rosters are set. Team names and standings format are still TBD.');
     let standingsPlaceholder = qs('#standings .preseason-placeholder');
     if (!standingsPlaceholder) {
       const stand = document.getElementById('standings');
-      if (stand) stand.insertAdjacentHTML('beforeend', placeholder('🏒', 'TEAMS COMING SOON', 'Four-person squads are coming in 2027. Rosters and team names will be announced when they are set.'));
+      if (stand) stand.insertAdjacentHTML('beforeend', placeholder('🏒', 'ROSTERS SET · TEAM NAMES TBD', 'The four 2027 squads have been drafted. Standings will go live after team names and the competition format are finalized.'));
     }
 
     setText('#playoffs .section-label', '2027 Playoffs');
@@ -379,7 +379,7 @@
       if (grid && !grid.classList.contains('preseason-rules')) {
         grid.className = 'preseason-rules';
         grid.innerHTML =
-          '<div class="preseason-rule"><strong>Confirmed</strong><b>4 TEAMS · 4 PLAYERS</b><p>The same 16 players will be reorganized from eight 2-player teams into four 4-player squads.</p></div>' +
+          '<div class="preseason-rule"><strong>Confirmed</strong><b>4 TEAMS · ROSTERS SET</b><p>Tony, Nick, Kyle, and Hick each captain a four-player squad. Team names are still TBD.</p></div>' +
           '<div class="preseason-rule"><strong>Competition Format</strong><b>TBD</b><p>The 9-hole best-ball format is changing. The new format will be announced once finalized.</p></div>';
       }
     }
