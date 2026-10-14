@@ -124,6 +124,20 @@
       .draft-pick-player{font-family:'Inter Tight','Barlow',sans-serif;font-size:12px;font-weight:750;color:#fff;}
       .draft-pick-captain{font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:900;letter-spacing:1px;text-transform:uppercase;color:var(--ice);}
 
+      body.season-preseason[data-season="2027"] .nav-btn.preseason-secondary-nav{opacity:.56;}
+      body.season-preseason[data-season="2027"] .nav-btn.preseason-secondary-nav:hover,
+      body.season-preseason[data-season="2027"] .nav-btn.preseason-secondary-nav.active{opacity:1;}
+
+      .next-reveal-2027{margin-top:14px;border:1px solid rgba(216,179,93,.22);border-radius:16px;background:linear-gradient(135deg,rgba(216,179,93,.09),rgba(159,201,220,.045));padding:16px 18px;text-align:center;}
+      .next-reveal-label{font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:900;letter-spacing:2.2px;text-transform:uppercase;color:var(--gold);}
+      .next-reveal-items{display:flex;align-items:center;justify-content:center;gap:9px;flex-wrap:wrap;margin-top:7px;}
+      .next-reveal-item{font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1.2px;color:#fff;}
+      .next-reveal-dot{color:var(--gold);opacity:.7;}
+      .next-reveal-copy{font-family:'Inter Tight','Barlow',sans-serif;font-size:11px;font-weight:600;color:var(--muted);margin-top:6px;}
+
+      #teams-2027-container .team-grid-2027{margin-top:10px;}
+      #teams-2027-container .draft-board-2027{margin-top:16px;}
+
       @media (max-width:760px){
         .team-grid-2027{grid-template-columns:repeat(2,minmax(0,1fr));}
         .draft-rounds{grid-template-columns:1fr;}
@@ -184,6 +198,92 @@
     '</div>';
   }
 
+  function teamGridHtml() {
+    return '<div class="team-grid-2027">' + TEAMS_2027.map(teamCard).join('') + '</div>';
+  }
+
+  function draftBoardHtml() {
+    return '<div class="draft-board-2027">' +
+      '<div class="draft-board-head">' +
+        '<div><div class="draft-board-kicker">2027 HGGL Draft</div><div class="draft-board-title">12 PICKS · 3 ROUNDS</div></div>' +
+        '<div class="draft-board-note">Draft order shown by overall pick.</div>' +
+      '</div>' +
+      '<div class="draft-rounds">' + draftRound(1) + draftRound(2) + draftRound(3) + '</div>' +
+    '</div>';
+  }
+
+  function nextRevealHtml() {
+    return '<div class="next-reveal-2027">' +
+      '<div class="next-reveal-label">Next Reveal</div>' +
+      '<div class="next-reveal-items">' +
+        '<span class="next-reveal-item">TEAM NAMES</span><span class="next-reveal-dot">·</span>' +
+        '<span class="next-reveal-item">COMPETITION FORMAT</span><span class="next-reveal-dot">·</span>' +
+        '<span class="next-reveal-item">2027 SCHEDULE</span>' +
+      '</div>' +
+      '<div class="next-reveal-copy">The rosters are locked. These are the next pieces coming to the 2027 league site.</div>' +
+    '</div>';
+  }
+
+  function ensureTeamsPage() {
+    if (!is2027Preseason()) return;
+
+    var nav = document.querySelector('.nav');
+    var content = document.querySelector('.content');
+    if (!nav || !content) return;
+
+    var teamsButton = nav.querySelector('[data-2027-teams-nav]');
+    if (!teamsButton) {
+      teamsButton = document.createElement('button');
+      teamsButton.type = 'button';
+      teamsButton.className = 'nav-btn';
+      teamsButton.setAttribute('data-2027-teams-nav', 'true');
+      teamsButton.textContent = 'Teams';
+      teamsButton.addEventListener('click', function () {
+        if (typeof window.show === 'function') window.show('teams-2027', teamsButton);
+      });
+
+      var homeButton = Array.prototype.find.call(nav.querySelectorAll('.nav-btn'), function (btn) {
+        return btn.textContent.trim().toLowerCase() === 'home';
+      });
+      if (homeButton && homeButton.nextSibling) nav.insertBefore(teamsButton, homeButton.nextSibling);
+      else nav.insertBefore(teamsButton, nav.firstChild);
+    }
+
+    var secondaryNames = ['standings','playoffs','schedule','results','skins & ctp','stats'];
+    Array.prototype.forEach.call(nav.querySelectorAll('.nav-btn'), function (btn) {
+      var label = btn.textContent.trim().toLowerCase();
+      btn.classList.toggle('preseason-secondary-nav', secondaryNames.indexOf(label) >= 0);
+    });
+
+    var section = document.getElementById('teams-2027');
+    if (!section) {
+      section = document.createElement('div');
+      section.id = 'teams-2027';
+      section.className = 'section';
+      section.innerHTML =
+        '<div class="section-header"><span class="section-label">2027 Teams</span><div class="section-header-line"></div></div>' +
+        '<p class="section-subtitle">The draft is complete. Team names are still TBD.</p>' +
+        '<div id="teams-2027-container"></div>';
+      var standings = document.getElementById('standings');
+      if (standings) content.insertBefore(section, standings);
+      else content.appendChild(section);
+    }
+
+    var container = document.getElementById('teams-2027-container');
+    if (container && container.getAttribute('data-rendered') !== '1') {
+      container.innerHTML =
+        '<div class="team-reveal-head">' +
+          '<div class="team-reveal-kicker">2027 Rosters</div>' +
+          '<div class="team-reveal-title">FOUR CAPTAINS. FOUR SQUADS.</div>' +
+          '<div class="team-reveal-copy">Temporary team labels stay in place until the official team names are selected.</div>' +
+        '</div>' +
+        teamGridHtml() +
+        draftBoardHtml() +
+        nextRevealHtml();
+      container.setAttribute('data-rendered', '1');
+    }
+  }
+
   function makeTeamsReveal() {
     var section = document.createElement('section');
     section.className = 'team-reveal';
@@ -193,20 +293,17 @@
         '<div class="team-reveal-title">THE TEAMS ARE SET.</div>' +
         '<div class="team-reveal-copy">Four captains. Three picks each. Team names are still coming, but the 2027 rosters are locked in.</div>' +
       '</div>' +
-      '<div class="team-grid-2027">' + TEAMS_2027.map(teamCard).join('') + '</div>' +
-      '<div class="draft-board-2027">' +
-        '<div class="draft-board-head">' +
-          '<div><div class="draft-board-kicker">2027 HGGL Draft</div><div class="draft-board-title">12 PICKS · 3 ROUNDS</div></div>' +
-          '<div class="draft-board-note">Draft order shown by overall pick.</div>' +
-        '</div>' +
-        '<div class="draft-rounds">' + draftRound(1) + draftRound(2) + draftRound(3) + '</div>' +
-      '</div>';
+      teamGridHtml() +
+      draftBoardHtml() +
+      nextRevealHtml();
     return section;
   }
 
   function ensure2027UI() {
     installLegacyRenderGuards();
     if (!is2027Preseason()) return false;
+
+    ensureTeamsPage();
 
     var ticker = document.querySelector('.ticker-wrap');
     if (ticker && ticker.style.display !== 'none') ticker.style.display = 'none';

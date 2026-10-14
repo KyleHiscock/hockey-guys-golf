@@ -326,7 +326,7 @@
       }
       shell.innerHTML =
         '<div class="preseason-hero-card">' +
-          '<div class="preseason-kicker">2027 HGGL</div>' +
+          '<div class="preseason-kicker">2027 HGGL · DRAFT COMPLETE</div>' +
           '<div class="preseason-title">FOUR TEAMS. ONE CUP.</div>' +
           '<div class="preseason-copy">The draft is complete. Tony, Nick, Kyle, and Hick now have their four-man squads. Team names and the new competition format are still to be revealed.</div>' +
           '<div class="preseason-badges"><span class="preseason-badge">4 Teams</span><span class="preseason-badge">Rosters Set</span><span class="preseason-badge">16 Players</span><span class="preseason-badge">Format TBD</span></div>' +
